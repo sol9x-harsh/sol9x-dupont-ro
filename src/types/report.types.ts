@@ -1,0 +1,2 @@
+// Report generation types
+export {};

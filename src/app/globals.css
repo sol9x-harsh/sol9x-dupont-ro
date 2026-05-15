@@ -460,6 +460,19 @@
   animation-delay: 350ms;
 }
 
+/* Loader indeterminate progress bar */
+@keyframes loader-slide {
+  0% {
+    left: -50%;
+  }
+  100% {
+    left: 120%;
+  }
+}
+.loader-bar {
+  animation: loader-slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 /* Water ripple for login */
 @keyframes water-ripple {
   0% {

@@ -1,33 +1,65 @@
+```md
 # SOL9X RO Design Studio — Project Context
 
 ## Overview
 
-SOL9X is a high-fidelity industrial engineering SaaS platform for Reverse Osmosis (RO) system design, simulation, optimization, and reporting.
+SOL9X is a high-fidelity industrial engineering SaaS platform for Reverse Osmosis (RO) system design, simulation, optimization, chemistry validation, and engineering report generation.
 
 The platform is being rebuilt from a Vite React application into a scalable production-grade Next.js App Router application.
 
 This application is NOT a generic SaaS dashboard.
-It is an engineering-grade process design platform inspired by:
 
-- DuPont WAVE
+It is an engineering-grade deterministic process design platform inspired by:
+
 - Industrial water treatment software
 - Process engineering systems
-- PFD / P&ID engineering tools
+- RO simulation tools
+- PFD / P&ID engineering applications
 
-The UI must feel:
+The platform must feel:
 
-- technical
-- precise
-- engineering-focused
 - industrial
-- data-dense but clean
+- technical
+- engineering-focused
+- deterministic
+- calculation-driven
+- process-oriented
 
 Avoid:
 
-- flashy startup aesthetics
+- startup dashboard aesthetics
+- flashy animations
 - excessive gradients
 - glassmorphism
-- marketing-style UI
+- fintech styling
+- crypto dashboard visuals
+- marketing UI patterns
+
+---
+
+# Current Project Status
+
+The frontend architecture restructuring is COMPLETE.
+
+The project now follows:
+
+- feature-based architecture
+- App Router route groups
+- modular engineering domains
+- Zustand domain stores
+- centralized types
+- scalable component organization
+
+Current focus:
+
+- backend engineering logic
+- deterministic calculation engine
+- chemistry engine
+- flow/recovery engine
+- validation system
+- engineering simulation architecture
+
+DO NOT introduce unnecessary architectural rewrites.
 
 ---
 
@@ -35,7 +67,7 @@ Avoid:
 
 ## Frontend
 
-- Next.js App Router
+- Next.js 16 App Router
 - React 19
 - TypeScript
 - Tailwind CSS v4
@@ -52,21 +84,40 @@ Avoid:
 - Mongoose
 - Next.js Route Handlers
 
+## Engineering Core
+
+Planned deterministic calculation modules:
+
+- chemistry engine
+- membrane transport engine
+- hydraulic engine
+- validation engine
+- reporting engine
+- simulation engine
+
 ---
 
-# Architecture Principles
+# Core Engineering Philosophy
 
-## Core Rules
+SOL9X is NOT a probabilistic simulator.
 
-- Maintain scalable architecture
-- Keep strict TypeScript typing
-- Use feature-based architecture
-- Prefer reusable components
-- Avoid prop drilling
-- Use Zustand for shared state
-- Preserve responsiveness
-- Preserve engineering precision
-- Avoid unnecessary abstractions
+It is a deterministic engineering calculation platform.
+
+All outputs must:
+
+- derive from explicit equations
+- be traceable
+- update reactively
+- avoid black-box behavior
+
+The platform follows:
+
+- no calculate button philosophy
+- reactive field updates
+- dependency-driven recalculation
+- engineering-grade transparency
+
+Every input change should propagate through dependent calculations automatically.
 
 ---
 
@@ -86,17 +137,20 @@ src/
 │ └── engineering/
 │
 ├── features/
+│ ├── dashboard/
 │ ├── project-profile/
 │ ├── feed-setup/
 │ ├── ro-config/
 │ ├── system-design/
 │ └── reporting/
 │
-├── services/
-│ ├── calculations/
+├── core/
 │ ├── chemistry/
-│ ├── validation/
-│ └── reporting/
+│ ├── hydraulics/
+│ ├── membrane/
+│ ├── recovery/
+│ ├── simulation/
+│ └── validation/
 │
 ├── store/
 │
@@ -104,289 +158,239 @@ src/
 │
 ├── types/
 │
+├── schemas/
+│
 ├── hooks/
+│
+├── services/
 │
 └── lib/
 
 ---
 
-# Design Language
+# Existing Zustand Stores
 
-## Visual Style
+Current store architecture includes:
 
-The application should resemble:
+- project-store
+- ui-store
+- feed-store
+- ro-config-store
+- simulation-store
+- report-store
 
-- engineering software
-- industrial control systems
-- CAD-lite interfaces
-- process simulation tools
+Stores should remain:
 
-NOT:
-
-- crypto dashboards
-- fintech UIs
-- startup analytics apps
-
----
-
-# Color System
-
-Primary accent:
-
-- Navy blue
-
-Supporting accents:
-
-- Slate
-- Steel blue
-- Cyan only when necessary
+- domain-specific
+- lightweight
+- scalable
+- strictly typed
 
 Avoid:
 
-- Teal-heavy styling
-- Neon colors
-- Overly saturated palettes
+- overengineering
+- excessive middleware
+- giant global stores
+
+---
+
+# Engineering Calculation Scope
+
+## CURRENT IMPLEMENTATION PRIORITY
+
+Implement ONLY foundational engineering calculations first.
+
+Priority order:
+
+1. Charge balance calculations
+2. TDS calculations
+3. Conductivity estimation
+4. Osmotic pressure
+5. Recovery calculations
+6. Flow propagation
+7. Pressure propagation
+8. Warning & validation system
+
+DO NOT prematurely implement:
+
+- advanced PHREEQC integration
+- CFD-style hydraulics
+- AI optimization
+- advanced thermodynamic models
+- dynamic spacer correlations
+- boron transport
+- advanced ion transport systems
+
+The system should evolve incrementally.
+
+---
+
+# Chemistry Engine Requirements
+
+The chemistry engine should support:
+
+- ion normalization
+- meq/L conversion
+- charge balance calculations
+- Na/Cl auto balancing
+- conductivity estimation
+- TDS cross-checking
+- carbonate equilibrium
+- osmotic pressure estimation
+- scaling indicators
+- pH dependency recalculation
+
+Important:
+
+Any chemistry-related input change must trigger dependent recalculations automatically.
+
+---
+
+# Engineering Equations
+
+Core RO equations used by the platform include:
+
+Water Flux:
+
+Jw = A(ΔP − Δπ)
+
+Solute Flux:
+
+Js = B(Cm − Cp)
+
+Osmotic Pressure:
+
+π = iCRT
+
+Concentration Polarization:
+
+β = exp(Jw / k)
+
+These equations form the foundation of the membrane transport engine.
+
+---
+
+# PFD / Process Flow Diagram Requirements
+
+The PFD is one of the MOST IMPORTANT components.
+
+The Process Flow Diagram must resemble:
+
+- industrial RO engineering software
+- membrane skid schematics
+- process engineering tools
+- simplified P&ID systems
+
+NOT:
+
+- infographic illustrations
+- startup diagrams
+- marketing graphics
+
+## PFD Visual Rules
+
+Use:
+
+- industrial piping
+- engineering flow direction
+- instrumentation labels
+- membrane vessel graphics
+- realistic process hierarchy
+
+### Flow Colors
+
+- Feed = solid slate/gray
+- Permeate = dashed blue
+- Reject = dashed orange/red
+
+### Instrumentation
+
+Include engineering identifiers:
+
+- P-101
+- PI-101
+- COND-201
+- RO-101
+
+### Equipment
+
+Use:
+
+- HP Pumps
+- Booster Pumps
+- Control Valves
+- Conductivity Sensors
+- Pressure Gauges
+
+Prioritize:
+
+1. process clarity
+2. flow readability
+3. engineering hierarchy
+4. instrumentation visibility
+
+---
+
+# Design Language
+
+## Visual Feel
+
+The platform should resemble:
+
+- industrial engineering software
+- CAD-lite interfaces
+- process simulation tools
+- enterprise process systems
+
+Avoid:
+
+- oversized cards
+- excessive whitespace
+- decorative gradients
+- playful styling
+- consumer-app aesthetics
 
 ---
 
 # Typography
 
-Preferred:
+Preferred fonts:
 
 - Inter
 - IBM Plex Mono
 
 Use IBM Plex Mono for:
 
-- engineering labels
-- metrics
-- process identifiers
-- instrumentation labels
+- engineering metrics
+- labels
+- instrumentation
+- technical identifiers
+- calculated outputs
 
 ---
 
-# Engineering UX Principles
+# Reporting Philosophy
 
-Prioritize:
+Reports should feel like:
 
-1. Readability
-2. Data hierarchy
-3. Process clarity
-4. Technical density
-5. Minimal cognitive load
-
-Avoid:
-
-- excessive whitespace
-- oversized cards
-- oversized typography
-- decorative elements
-
----
-
-# Application Modules
-
-## 1. Authentication
-
-Includes:
-
-- Login
-- Signup
-- Forgot Password
-
-Features:
-
-- Email/password auth
-- Social auth placeholders
-- Workspace-aware login
-
----
-
-# 2. Projects Dashboard
-
-Purpose:
-Centralized project management system.
-
-Features:
-
-- Grid/List toggle
-- Search
-- Filters
-- Status badges
-- Folder hierarchy
-- Project metadata
-
-Project cards include:
-
-- Project Name
-- Client
-- Recovery %
-- Status
-- Last updated
-
----
-
-# 3. Studio Workspace
-
-Main engineering workspace.
-
-Core sections:
-
-- Project Profile
-- Feed Setup
-- RO Configuration
-- System Architecture
-- Report Center
-
----
-
-# 4. Feed Setup
-
-Purpose:
-Define detailed feed water chemistry.
-
-Features:
-
-- Water presets
-- Ion composition
-- Stream configuration
-- Live analytics
-- Charge balance calculations
-- TOC rejection
-- Constraints validation
-
-Includes:
-
-- Cations
-- Anions
-- Neutrals
-- TDS
-- Conductivity
-- SDI
-- Scaling indicators
-
----
-
-# 5. RO Configuration
-
-Purpose:
-Configure actual RO system architecture.
-
-Features:
-
-- Pass management
-- Stage management
-- Vessel configuration
-- Flow calculator
-- Chemical adjustment
-- Recovery calculations
-
----
-
-# 6. Process Flow Diagram (VERY IMPORTANT)
-
-The PFD is one of the most critical components.
-
-## PFD Style Requirements
-
-The Process Flow Diagram must look like:
-
-- real industrial RO engineering software
-- process engineering diagrams
-- simplified P&ID systems
-- membrane skid schematics
+- engineering documentation
+- technical reports
+- industrial deliverables
 
 NOT:
 
-- SaaS infographics
-- dashboard illustrations
+- marketing reports
+- SaaS analytics exports
 
-## PFD Requirements
+Reports must support:
 
-Use:
-
-- industrial piping
-- technical labels
-- equipment symbols
-- membrane train visuals
-- engineering flow hierarchy
-
-### Flow Colors
-
-- Feed = solid gray/slate
-- Permeate = dashed blue
-- Reject = dashed orange/red
-
-### Include Symbols
-
-- HP Pump
-- Booster Pump
-- Conductivity Sensor
-- Pressure Gauge
-- Control Valve
-
-### Labels
-
-Use engineering naming:
-
-- P-101
-- RO-101
-- COND-201
-- PI-101
-
-### Visual Hierarchy
-
-Prioritize:
-
-1. Process flow
-2. Equipment
-3. Instrumentation
-4. Permeate
-5. Reject
-
----
-
-# 7. Reporting Center
-
-Purpose:
-Generate engineering-grade reports.
-
-Features:
-
-- PDF export
-- Print mode
-- Climate scenarios
-- Performance tables
-- Economic breakdown
-- Chemical analysis
-
-Report style:
-
-- clean
-- professional
-- engineering documentation style
-
-Avoid:
-
-- marketing report aesthetics
-
----
-
-# State Management
-
-Use Zustand stores.
-
-Examples:
-
-- useProjectStore
-- useFeedStore
-- useROConfigStore
-- useReportStore
-
-Avoid:
-
-- deeply nested prop drilling
-- overly global state
+- process summaries
+- chemistry analysis
+- performance tables
+- warnings
+- system topology
+- PFD inclusion
+- export-ready formatting
 
 ---
 
@@ -394,53 +398,63 @@ Avoid:
 
 Always:
 
-- preserve functionality
 - preserve responsiveness
-- preserve dynamic rendering
 - preserve calculations
+- preserve engineering logic
+- preserve deterministic behavior
+- preserve scalability
+- preserve TypeScript strictness
 
 Prefer:
 
 - reusable abstractions
-- modular architecture
-- clean naming
-- maintainable structure
+- modular structure
+- clean engineering naming
+- maintainable architecture
 
 Avoid:
 
+- monolithic files
+- unnecessary abstractions
 - premature optimization
-- unnecessary patterns
-- giant monolithic files
+- breaking existing behavior
 
 ---
 
-# When Editing Existing Components
+# IMPORTANT DEVELOPMENT RULES
 
-IMPORTANT:
+When editing existing components:
 
-- Preserve business logic
-- Preserve calculations
-- Preserve props
-- Preserve responsiveness
-- Modify visuals carefully
-- Avoid breaking existing behavior
+- preserve business logic
+- preserve store behavior
+- preserve calculations
+- preserve responsiveness
+- preserve engineering workflows
 
-If redesigning:
+If redesigning UI:
 
-- change visual system only
-- not engineering logic
+- modify visuals carefully
+- DO NOT alter engineering logic
 
----
+When implementing calculations:
 
-# Expected Engineering Feel
-
-The product should feel like:
-
-- software used by process engineers
-- industrial RO simulation software
-- enterprise engineering tooling
-
-The user should immediately feel:
-"This is serious engineering software."
+- keep equations explicit
+- keep logic traceable
+- avoid hidden magic behavior
+- prefer readability over cleverness
 
 ---
+
+# Expected User Feeling
+
+The product should immediately feel like:
+
+- serious engineering software
+- enterprise RO design tooling
+- industrial process software
+- membrane engineering platform
+
+The user should think:
+
+"This is real engineering software."
+```

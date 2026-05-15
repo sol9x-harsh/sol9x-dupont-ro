@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { Providers } from '@/providers/Providers';
+import { AppProviders } from '@/providers/AppProviders';
 
 export const metadata: Metadata = {
   title: 'SOL9X - RO Design Studio',
-  description: 'Production-grade Reverse Osmosis engineering and design application.',
+  description:
+    'Production-grade Reverse Osmosis engineering and design application.',
 };
 
 export default function RootLayout({
@@ -13,9 +14,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="antialiased font-sans">
-        <Providers>{children}</Providers>
+    <html lang='en' suppressHydrationWarning>
+      <body className='antialiased font-sans'>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

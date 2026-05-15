@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Find \"c:\\\\Users\\\\ASUS\\\\Desktop\\\\SOL9X\\\\dupont\\\\sol9x-dupont-ro\" -name \"*ion*\" -type f)"
+    ]
+  }
+}

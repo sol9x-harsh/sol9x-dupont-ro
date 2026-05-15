@@ -20,7 +20,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const folder = await Folder.findOneAndUpdate(
     { _id: id, userId: session.user.id },
     { $set: { name, description, color } },
-    { new: true }
+    { returnDocument: 'after' },
   );
 
   if (!folder) {
@@ -48,7 +48,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   // Clear folder references in projects
   await Project.updateMany(
     { userId: session.user.id, folder: folder.name },
-    { $set: { folder: '' } }
+    { $set: { folder: '' } },
   );
 
   await Folder.deleteOne({ _id: id });

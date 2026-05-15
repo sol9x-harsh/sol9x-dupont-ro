@@ -112,7 +112,5 @@ export function NumericInput({
 
 function formatForDisplay(value: number, precision: number): string {
   if (!isFinite(value) || value === 0) return '';
-  // Strip trailing zeros but respect precision cap
-  const fixed = value.toFixed(precision);
-  return fixed.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  return value.toFixed(precision);
 }

@@ -13,6 +13,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+
+import {
   BookMarked,
   Save,
   Droplets,
@@ -25,13 +36,15 @@ import {
   Plus,
   X,
   FlaskConical,
+  Pencil,
+  Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NumericInput } from '@/components/ui/numeric-input';
 import { PresetModal } from '@/features/feed-setup/modals/PresetModal';
 
-import { useFeedStore } from '@/store/feed-store';
-import type { IonComposition } from '@/store/feed-store';
+import { useFeedStore, getBlendedChemistry } from '@/store/feed-store';
+import type { IonComposition, WaterType } from '@/store/feed-store';
 import {
   fmtConc,
   fmtMeq,
@@ -45,7 +58,7 @@ import {
   totalAnionMeq,
 } from '@/core/chemistry/balance/charge-balance';
 import { analyzeTDS } from '@/core/chemistry/tds/tds-analysis';
-import { estimateConductivityFromIons } from '@/core/chemistry/conductivity/conductivity-calculation';
+import { analyzeConductivityDual } from '@/core/chemistry/conductivity/conductivity-analysis';
 import { estimateOsmoticPressureFromIons } from '@/core/chemistry/osmotic/osmotic-calculation';
 
 // ─── Equivalent weights (g/eq) for meq/L and ppm CaCO₃ conversions ───────────
@@ -364,6 +377,7 @@ function FieldInput({
   className = '',
   onChange,
   readOnly,
+  error,
 }: {
   label: string;
   value: string | number;
@@ -373,6 +387,7 @@ function FieldInput({
   className?: string;
   onChange?: (v: number) => void;
   readOnly?: boolean;
+  error?: string;
 }) {
   return (
     <div className={className}>
@@ -389,8 +404,10 @@ function FieldInput({
           className={cn(
             'h-9 font-mono text-sm border-input rounded-md px-3 border',
             readOnly
-              ? 'bg-primary-soft/50 border-primary/20 text-primary opacity-70'
-              : 'bg-card',
+              ? 'bg-slate-100 border-slate-200 text-slate-500 opacity-80'
+              : error
+                ? 'bg-red-50 border-red-400 text-red-700'
+                : 'bg-card',
           )}
         />
         {unit && (
@@ -399,10 +416,14 @@ function FieldInput({
           </span>
         )}
       </div>
-      {range && (
-        <p className='text-[10px] text-muted-foreground/60 mt-1 italic'>
-          {range}
-        </p>
+      {error ? (
+        <p className='text-[10px] text-red-500 mt-1 font-medium'>{error}</p>
+      ) : (
+        range && (
+          <p className='text-[10px] text-muted-foreground/60 mt-1 italic'>
+            {range}
+          </p>
+        )
       )}
     </div>
   );
@@ -410,11 +431,42 @@ function FieldInput({
 
 // ─── Main view ────────────────────────────────────────────────────────────────
 
+function formatStreamLabel(label: string): string {
+  if (!label) return 'Stream 1';
+  if (label.toLowerCase() === 'feed-01' || label.toLowerCase() === 'stream 01') return 'Stream 1';
+  if (label.toLowerCase().startsWith('feed-0')) return label.replace(/feed-0/i, 'Stream ');
+  if (label.toLowerCase().startsWith('stream 0')) return label.replace(/stream 0/i, 'Stream ');
+  return label;
+}
+
 export function FeedSetupView() {
-  const [streams, setStreams] = useState(['Stream 01', 'Stream 02']);
-  const [activeStream, setActiveStream] = useState('Stream 01');
+  const streamsMap = useFeedStore((s) => s.streams);
+  const activeStreamId = useFeedStore((s) => s.activeStreamId);
+  const addStream = useFeedStore((s) => s.addStream);
+  const removeStream = useFeedStore((s) => s.removeStream);
+  const setActiveStreamStore = useFeedStore((s) => s.setActiveStream);
+  const setStreamLabelStore = useFeedStore((s) => s.setStreamLabel);
+  const setStreamBlendPercentage = useFeedStore(
+    (s) => s.setStreamBlendPercentage,
+  );
+
+  const streamsList = Object.values(streamsMap);
+  const activeStreamLabel = formatStreamLabel(
+    streamsMap[activeStreamId]?.streamLabel || 'Stream 1'
+  );
   const [presetOpen, setPresetOpen] = useState(false);
+  const [streamToDelete, setStreamToDelete] = useState<string | null>(null);
   const [presetMode, setPresetMode] = useState<'choose' | 'save'>('choose');
+  const [activeProfileName, setActiveProfileName] = useState<string | null>(
+    null,
+  );
+
+  const setActiveStream = (id: string) => {
+    setActiveStreamStore(id);
+    setActiveProfileName(null);
+  };
+  const [isEditingStreamName, setIsEditingStreamName] = useState(false);
+  const [editStreamNameValue, setEditStreamNameValue] = useState('');
   const [quickCompound, setQuickCompound] = useState<'NaCl' | 'MgSO4'>('NaCl');
   const [inputError, setInputError] = useState(false);
   const quickInputRef = useRef<HTMLInputElement>(null);
@@ -435,11 +487,20 @@ export function FeedSetupView() {
 
   const ions = useFeedStore((s) => s.chemistry.ions);
   const ph = useFeedStore((s) => s.chemistry.ph);
-  const temperature = useFeedStore((s) => s.chemistry.temperature);
+  const designTemperature = useFeedStore((s) => s.chemistry.designTemperature);
+  const minTemperature = useFeedStore((s) => s.chemistry.minTemperature);
+  const maxTemperature = useFeedStore((s) => s.chemistry.maxTemperature);
+  const activeTemperatureView = useFeedStore((s) => s.activeTemperatureView);
+  const setActiveTemperatureView = useFeedStore(
+    (s) => s.setActiveTemperatureView,
+  );
   const turbidity = useFeedStore((s) => s.chemistry.turbidity);
   const sdi = useFeedStore((s) => s.chemistry.sdi);
+  const waterType = useFeedStore((s) => s.waterType);
+  const setWaterType = useFeedStore((s) => s.setWaterType);
   const updateIon = useFeedStore((s) => s.updateIon);
   const updateChemistryField = useFeedStore((s) => s.updateChemistryField);
+  const hydrateFeed = useFeedStore((s) => s.hydrateFeed);
 
   const triggerRecalc = () => {
     setIsRecalculating(true);
@@ -508,31 +569,78 @@ export function FeedSetupView() {
     CO2: ions.co2 ?? 0,
   };
 
+  // Active temperature for sensitivity display (Min/Design/Max context)
+  const activeTemp =
+    activeTemperatureView === 'min'
+      ? minTemperature
+      : activeTemperatureView === 'max'
+        ? maxTemperature
+        : designTemperature;
+
+  const blendedChemistry = getBlendedChemistry();
+  const blendedConcMap: Record<string, number> = {
+    NH4: blendedChemistry.ions.ammonium ?? 0,
+    Na: blendedChemistry.ions.sodium ?? 0,
+    K: blendedChemistry.ions.potassium ?? 0,
+    Mg: blendedChemistry.ions.magnesium ?? 0,
+    Ca: blendedChemistry.ions.calcium ?? 0,
+    Sr: blendedChemistry.ions.strontium ?? 0,
+    Ba: blendedChemistry.ions.barium ?? 0,
+    CO3: blendedChemistry.ions.carbonate ?? 0,
+    HCO3: blendedChemistry.ions.bicarbonate ?? 0,
+    NO3: blendedChemistry.ions.nitrate ?? 0,
+    F: blendedChemistry.ions.fluoride ?? 0,
+    Cl: blendedChemistry.ions.chloride ?? 0,
+    Br: blendedChemistry.ions.bromide ?? 0,
+    SO4: blendedChemistry.ions.sulfate ?? 0,
+    PO4: blendedChemistry.ions.phosphate ?? 0,
+    SiO2: blendedChemistry.ions.silica ?? 0,
+    B: blendedChemistry.ions.boron ?? 0,
+    CO2: blendedChemistry.ions.co2 ?? 0,
+  };
+  const blendedTDSResult = analyzeTDS(blendedConcMap);
+  const blendedConductivityResult = analyzeConductivityDual(
+    blendedTDSResult.tdsMgL,
+    blendedConcMap,
+    waterType,
+  );
+
+  // Inline temperature hierarchy validation errors
+  const minTempError =
+    minTemperature >= designTemperature
+      ? 'Min Temp must be below Design Temp'
+      : undefined;
+  const designTempError =
+    designTemperature <= minTemperature
+      ? 'Design Temp must exceed Min Temp'
+      : designTemperature >= maxTemperature
+        ? 'Design Temp must be below Max Temp'
+        : undefined;
+  const maxTempError =
+    maxTemperature <= designTemperature
+      ? 'Max Temp must exceed Design Temp'
+      : maxTemperature > 45
+        ? 'Max Temp cannot exceed 45 °C'
+        : undefined;
+
   // Live analytics — derived directly from feed store, no simulation run needed
   const tdsResult = analyzeTDS(concMap);
   const cationMeq = totalCationMeq(concMap);
   const anionMeq = totalAnionMeq(concMap);
   const chargeBalanceMeqL = cationMeq - anionMeq;
   const hasBalance = cationMeq + anionMeq > 0.01;
-  const conductivityUsCm = estimateConductivityFromIons(concMap);
+  const isChargeBalanced = hasBalance && Math.abs(chargeBalanceMeqL) < 0.01;
+  const hasIons = Object.values(concMap).some((val) => val > 0);
+  const conductivityResult = analyzeConductivityDual(
+    tdsResult.tdsMgL,
+    concMap,
+    waterType,
+  );
+  const conductivityUsCm = conductivityResult.conductivityUsCm;
   const osmoticPressureBar = estimateOsmoticPressureFromIons(
     concMap,
-    temperature,
+    activeTemp,
   ).osmoticPressureBar;
-
-  const addStream = () => {
-    const nextNum = streams.length + 1;
-    const newStream = `Stream ${nextNum.toString().padStart(2, '0')}`;
-    setStreams([...streams, newStream]);
-    setActiveStream(newStream);
-  };
-
-  const removeStream = (streamToRemove: string) => {
-    if (streams.length <= 1) return;
-    const newStreams = streams.filter((s) => s !== streamToRemove);
-    setStreams(newStreams);
-    if (activeStream === streamToRemove) setActiveStream(newStreams[0]);
-  };
 
   // Converts mg/L of a compound to mg/L of the target ion using mass fractions
   // NaCl MW=58.44, MgSO4 MW=120.37
@@ -676,7 +784,55 @@ export function FeedSetupView() {
         open={presetOpen}
         onOpenChange={setPresetOpen}
         initialMode={presetMode}
+        onApply={(chemistry, profileName, presetType) => {
+          const typeMap: Record<string, WaterType> = {
+            'Seawater': 'Sea Water',
+            'Sea Water': 'Sea Water',
+            'Surface Water': 'Surface Water',
+            'Well Water': 'Well Water',
+            'Wastewater': 'Waste Water',
+            'Waste Water': 'Waste Water',
+            'Municipal Water': 'Municipal Water',
+            'Softened Water': 'Softened Water',
+            'RO/NF Permeate': 'RO/NF Permeate',
+          };
+          const mappedType: WaterType = typeMap[presetType] ?? 'Custom';
+          hydrateFeed({ chemistry, preset: 'custom', waterType: mappedType });
+          setActiveProfileName(profileName);
+          triggerRecalc();
+        }}
       />
+
+      <AlertDialog
+        open={!!streamToDelete}
+        onOpenChange={(open) => !open && setStreamToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Stream</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this stream? This action cannot be
+              undone. The stream's blend percentage will be distributed among
+              the remaining streams.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className='bg-red-500 hover:bg-red-600 text-white focus:ring-red-500'
+              onClick={() => {
+                if (streamToDelete) {
+                  removeStream(streamToDelete);
+                  triggerRecalc();
+                }
+                setStreamToDelete(null);
+              }}
+            >
+              Delete Stream
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className='flex items-start justify-between flex-wrap gap-3 mb-4'>
         <div className='space-y-0.5'>
@@ -687,79 +843,188 @@ export function FeedSetupView() {
             Define source water chemistry, ions, and pre-treatment conditions.
           </p>
         </div>
+        {streamsList.length > 1 && (
+          <div className='flex items-center gap-4 bg-primary/5 px-4 py-2 rounded-xl border border-primary/20 shrink-0'>
+            <div className='flex flex-col'>
+              <span className='text-[10px] uppercase tracking-wider text-primary font-bold'>
+                Blended TDS
+              </span>
+              <span className='font-mono font-bold text-slate-800 text-lg leading-none mt-0.5'>
+                {isRecalculating ? (
+                  <span className='inline-block w-16 h-4 rounded animate-pulse bg-slate-200' />
+                ) : (
+                  fmtTDS(blendedTDSResult.tdsMgL)
+                )}{' '}
+                <span className='text-[10px] text-slate-500 font-sans'>
+                  mg/L
+                </span>
+              </span>
+            </div>
+            <div className='w-px h-8 bg-primary/20' />
+            <div className='flex flex-col'>
+              <span className='text-[10px] uppercase tracking-wider text-primary font-bold'>
+                Blended Cond.
+              </span>
+              <span className='font-mono font-bold text-slate-800 text-lg leading-none mt-0.5'>
+                {isRecalculating ? (
+                  <span className='inline-block w-16 h-4 rounded animate-pulse bg-slate-200' />
+                ) : (
+                  fmtConductivity(blendedConductivityResult.conductivityUsCm)
+                )}{' '}
+                <span className='text-[10px] text-slate-500 font-sans'>
+                  µS/cm
+                </span>
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Stream tabs ── */}
-      <div className='flex items-center gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide'>
-        {streams.map((stream) => (
-          <button
-            key={stream}
-            onClick={() => setActiveStream(stream)}
-            className={cn(
-              'h-8 pl-4 pr-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 border relative group/stream',
-              activeStream === stream
-                ? 'bg-primary text-white border-primary shadow-sm'
-                : 'bg-white text-slate-500 border-border hover:border-primary/30 hover:text-primary',
-            )}
-          >
-            <Waves
+      <div className='flex flex-wrap items-center gap-3 mb-5 pb-2'>
+        {streamsList.map((stream) => {
+          const isActive = activeStreamId === stream.id;
+          return (
+            <div
+              key={stream.id}
+              onClick={() => setActiveStream(stream.id)}
+              role='button'
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  setActiveStream(stream.id);
+                }
+              }}
               className={cn(
-                'w-3.5 h-3.5',
-                activeStream === stream ? 'text-white/70' : 'text-primary/40',
+                'group flex items-center gap-3 h-11 pl-4 pr-3 rounded-xl border select-none transition-all duration-200 cursor-pointer shrink-0',
+                isActive
+                  ? 'bg-primary/5 border-primary/30 shadow-sm ring-1 ring-primary/10'
+                  : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50',
               )}
-            />
-            <span className='mr-1'>{stream}</span>
-            {streams.length > 1 && (
-              <div
-                className={cn(
-                  'w-5 h-5 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover/stream:opacity-100',
-                  activeStream === stream
-                    ? 'hover:bg-white/20 text-white'
-                    : 'hover:bg-red-50 text-slate-300 hover:text-red-500',
-                )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeStream(stream);
-                }}
-              >
-                <X className='w-3 h-3' />
+            >
+              <div className='flex items-center gap-2'>
+                <Waves
+                  className={cn(
+                    'w-4 h-4 transition-colors duration-200',
+                    isActive
+                      ? 'text-primary'
+                      : 'text-slate-400 group-hover:text-primary/60',
+                  )}
+                />
+                <span
+                  className={cn(
+                    'text-[13px] font-semibold tracking-tight',
+                    isActive ? 'text-primary' : 'text-slate-700',
+                  )}
+                >
+                  {formatStreamLabel(stream.streamLabel)}
+                </span>
               </div>
-            )}
-          </button>
-        ))}
-        <Button
-          variant='outline'
-          size='icon'
+
+              {streamsList.length > 1 && (
+                <div className='flex items-center gap-2 border-l border-slate-200 pl-3 ml-1'>
+                  <div className='flex items-baseline gap-0.5'>
+                    <NumericInput
+                      min={0}
+                      max={100}
+                      precision={0}
+                      value={Math.round(stream.blendPercentage || 0)}
+                      onChange={(val) => {
+                        if (isFinite(val)) {
+                          setStreamBlendPercentage(stream.id, val);
+                          triggerRecalc();
+                        }
+                      }}
+                      className={cn(
+                        'w-8 h-6 bg-transparent border-transparent text-right font-mono font-bold text-[14px] p-0 shadow-none focus:ring-0 focus:outline-none transition-colors',
+                        isActive ? 'text-primary' : 'text-slate-700',
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        'text-[11px] font-bold',
+                        isActive ? 'text-primary/60' : 'text-slate-400',
+                      )}
+                    >
+                      %
+                    </span>
+                  </div>
+
+                  <div
+                    className='opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-md transition-all text-slate-400 hover:bg-red-50 hover:text-red-500 cursor-pointer ml-1'
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setStreamToDelete(stream.id);
+                    }}
+                    title='Delete stream'
+                  >
+                    <X className='w-3.5 h-3.5' />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <button
           onClick={addStream}
-          className='h-8 w-8 rounded-lg border-dashed border-2 border-slate-200 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5 transition-all shrink-0'
+          className='h-11 w-11 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all shrink-0 ml-1'
+          title='Add stream'
         >
           <Plus className='w-4 h-4' />
-        </Button>
+        </button>
       </div>
 
       {/* ── Profile status bar ── */}
-      <div className='flex items-center justify-between mb-4 bg-white border border-border rounded-xl px-4 py-3 shadow-sm hover:border-primary/30 transition-all duration-300'>
-        <div className='flex flex-col gap-0.5'>
-          <div className='flex items-center gap-2.5 mb-0.5'>
-            <Badge
-              variant='outline'
-              className='bg-primary/5 text-primary border-primary/20 text-[9px] font-black uppercase tracking-widest px-2 py-0'
-            >
-              Active Profile
-            </Badge>
-            <div className='flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest'>
-              <div className='w-1 h-1 rounded-full bg-primary animate-pulse' />
-              {activeStream}
-            </div>
-          </div>
-          <h2 className='text-lg font-display font-bold text-slate-900 tracking-tight'>
-            Seawater — <span className='text-primary'>Bay of Bengal</span>
+      <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 bg-white border border-border/60 rounded-xl p-4 shadow-sm transition-all'>
+        <div className='flex flex-col gap-1.5'>
+          <h2 className='text-sm text-slate-700 flex items-center gap-2'>
+            You are currently viewing parameters for:{' '}
+            {activeProfileName ? (
+              <span className='text-primary font-bold'>
+                {activeProfileName}
+              </span>
+            ) : isEditingStreamName ? (
+              <div className='flex items-center gap-2'>
+                <input
+                  autoFocus
+                  type='text'
+                  value={editStreamNameValue}
+                  onChange={(e) => setEditStreamNameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && editStreamNameValue.trim()) {
+                      setStreamLabelStore(editStreamNameValue.trim());
+                      setIsEditingStreamName(false);
+                    } else if (e.key === 'Escape') {
+                      setIsEditingStreamName(false);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (editStreamNameValue.trim()) {
+                      setStreamLabelStore(editStreamNameValue.trim());
+                    }
+                    setIsEditingStreamName(false);
+                  }}
+                  className='h-7 px-2 text-sm font-semibold text-primary border border-primary/40 rounded focus:outline-none focus:ring-1 focus:ring-primary w-48'
+                />
+              </div>
+            ) : (
+              <div
+                className='flex items-center gap-1.5 text-primary font-semibold group cursor-pointer hover:bg-primary/5 px-2 py-0.5 rounded transition-colors -ml-2'
+                onClick={() => {
+                  setEditStreamNameValue(activeStreamLabel);
+                  setIsEditingStreamName(true);
+                }}
+              >
+                <span>Feed Setup - {activeStreamLabel}</span>
+                <Pencil className='w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity' />
+              </div>
+            )}
           </h2>
         </div>
-        <div className='flex items-center gap-3'>
+        <div className='flex items-center gap-3 w-full sm:w-auto'>
           <Button
             variant='outline'
-            className='h-9 px-4 gap-2 text-xs font-bold border-border hover:bg-slate-50 text-slate-600 rounded-lg transition-all'
+            className='flex-1 sm:flex-none h-10 px-4 gap-2 text-xs font-bold border-border/60 hover:bg-slate-50 text-slate-600 rounded-lg transition-all shadow-sm'
             onClick={() => {
               setPresetMode('choose');
               setPresetOpen(true);
@@ -769,7 +1034,7 @@ export function FeedSetupView() {
             Browse Library
           </Button>
           <Button
-            className='h-9 px-5 gap-2 text-xs font-bold bg-primary text-white hover:bg-primary/90 rounded-lg shadow-lg shadow-primary/10 transition-all hover:-translate-y-0.5'
+            className='flex-1 sm:flex-none h-10 px-5 gap-2 text-xs font-bold bg-primary text-white hover:bg-primary/90 rounded-lg shadow-sm transition-all'
             onClick={() => {
               setPresetMode('save');
               setPresetOpen(true);
@@ -783,15 +1048,16 @@ export function FeedSetupView() {
 
       {/* ── Source Water Properties ── */}
       <Card className='mb-3 border-border/40 shadow-sm overflow-hidden bg-white'>
-        <div className='px-4 py-2 border-b border-border/40 bg-white flex items-center'>
+        <div className='px-4 py-2.5 border-b border-border/40 bg-white flex items-center'>
           <h2 className='text-sm font-semibold text-foreground flex items-center gap-2'>
             <Droplets className='w-4 h-4 text-primary' />
             Source Water Properties
           </h2>
         </div>
 
-        <div className='p-4 grid grid-cols-1 md:grid-cols-12 gap-x-6 gap-y-4'>
-          <div className='md:col-span-3 space-y-3'>
+        <div className='grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border/40'>
+          {/* ── Column 1: Classification ── */}
+          <div className='p-4 space-y-3'>
             <h3 className='text-[10px] uppercase tracking-widest text-muted-foreground font-bold flex items-center gap-1.5'>
               <Waves className='w-3 h-3' /> Classification
             </h3>
@@ -799,25 +1065,33 @@ export function FeedSetupView() {
               <label className='text-[11px] text-muted-foreground font-medium block mb-1.5'>
                 Water Type
               </label>
-              <Select defaultValue='seawater'>
-                <SelectTrigger className='h-9 text-sm'>
+              <Select
+                value={waterType}
+                onValueChange={(v) => setWaterType(v as WaterType)}
+              >
+                <SelectTrigger className='h-9 text-sm bg-white'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value='surface'>Surface Water</SelectItem>
-                  <SelectItem value='brackish'>Brackish Well</SelectItem>
-                  <SelectItem value='seawater'>Seawater</SelectItem>
-                  <SelectItem value='tertiary'>Tertiary Effluent</SelectItem>
-                  <SelectItem value='custom'>Custom</SelectItem>
+                  <SelectItem value='RO/NF Permeate'>RO/NF Permeate</SelectItem>
+                  <SelectItem value='Softened Water'>Softened Water</SelectItem>
+                  <SelectItem value='Municipal Water'>
+                    Municipal Water
+                  </SelectItem>
+                  <SelectItem value='Well Water'>Well Water</SelectItem>
+                  <SelectItem value='Surface Water'>Surface Water</SelectItem>
+                  <SelectItem value='Sea Water'>Sea Water</SelectItem>
+                  <SelectItem value='Waste Water'>Waste Water</SelectItem>
+                  <SelectItem value='Custom'>Custom</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
               <label className='text-[11px] text-muted-foreground font-medium block mb-1.5'>
-                Water Sub-Type
+                Pre-treatment Quality
               </label>
               <Select defaultValue='sdi5'>
-                <SelectTrigger className='h-9 text-sm'>
+                <SelectTrigger className='h-9 text-sm bg-white'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -829,91 +1103,103 @@ export function FeedSetupView() {
             </div>
           </div>
 
-          <div className='hidden md:block md:col-span-1'>
-            <div className='w-px h-full bg-border/40 mx-auto' />
-          </div>
-
-          <div className='md:col-span-4 space-y-3'>
+          {/* ── Column 2: Physical Properties ── */}
+          <div className='p-4 space-y-3'>
             <h3 className='text-[10px] uppercase tracking-widest text-muted-foreground font-bold flex items-center gap-1.5'>
               <Zap className='w-3 h-3' /> Physical Properties
             </h3>
-            <div className='grid grid-cols-2 gap-4 mb-4'>
+
+            {/* pH */}
+            <div className='grid grid-cols-2 gap-3'>
               <FieldInput
-                label={`pH @ ${temperature.toFixed(1)} °C`}
+                label='Design pH'
                 value={ph}
-                range='Range 0 – 14'
+                range='Range 0–14'
                 required
                 onChange={(v) => {
                   if (isFinite(v) && v >= 0 && v <= 14)
                     updateChemistryField('ph', v);
                 }}
               />
-              <FieldInput label='pH @ 25.0 °C' value={ph} readOnly />
+              <FieldInput
+                label='pH @ 25 °C'
+                value={(ph + 0.015 * (designTemperature - 25)).toFixed(2)}
+                readOnly
+              />
             </div>
-            <div className='grid grid-cols-3 gap-3'>
+
+            {/* Temperature Range */}
+            <div className='grid grid-cols-3 gap-2'>
               <FieldInput
                 label='Min Temp'
-                value={temperature - 4}
+                value={minTemperature}
                 unit='°C'
-                range='1-45'
-                readOnly
+                range={`1–${designTemperature - 1}`}
+                error={minTempError}
+                onChange={(v) => {
+                  if (isFinite(v) && v >= 1 && v <= 45)
+                    updateChemistryField('minTemperature', v);
+                }}
               />
               <FieldInput
                 label='Design Temp'
-                value={temperature}
+                value={designTemperature}
                 unit='°C'
+                range={`${minTemperature + 1}–${maxTemperature - 1}`}
+                error={designTempError}
                 required
                 onChange={(v) => {
                   if (isFinite(v) && v >= 1 && v <= 45)
-                    updateChemistryField('temperature', v);
+                    updateChemistryField('designTemperature', v);
                 }}
               />
               <FieldInput
                 label='Max Temp'
-                value={temperature + 5}
+                value={maxTemperature}
                 unit='°C'
-                range='1-45'
-                readOnly
+                range={`${designTemperature + 1}–45`}
+                error={maxTempError}
+                onChange={(v) => {
+                  if (isFinite(v) && v >= 1 && v <= 45)
+                    updateChemistryField('maxTemperature', v);
+                }}
               />
             </div>
           </div>
 
-          <div className='hidden md:block md:col-span-1'>
-            <div className='w-px h-full bg-border/40 mx-auto' />
-          </div>
-
-          <div className='md:col-span-3 space-y-3'>
+          {/* ── Column 3: Contaminants ── */}
+          <div className='p-4 space-y-3'>
             <h3 className='text-[10px] uppercase tracking-widest text-muted-foreground font-bold flex items-center gap-1.5'>
-              <AlertTriangle className='w-3 h-3' /> Contaminants
+              <AlertTriangle className='w-3 h-3' /> Contaminants & Fouling
             </h3>
             <div className='grid grid-cols-2 gap-3'>
               <FieldInput
                 label='Turbidity'
                 value={turbidity}
                 unit='NTU'
-                range='0-300'
+                range='0–300'
                 onChange={(v) => {
                   if (isFinite(v) && v >= 0)
                     updateChemistryField('turbidity', v);
                 }}
               />
-              <FieldInput label='TSS' value={2.0} unit='mg/L' range='0-100' />
+              <FieldInput label='TSS' value={2.0} unit='mg/L' range='0–100' />
             </div>
             <div className='grid grid-cols-2 gap-3'>
               <FieldInput
                 label='SDI₁₅'
                 value={sdi}
-                range='0-5'
+                range='0–5'
                 onChange={(v) => {
                   if (isFinite(v) && v >= 0 && v <= 5)
                     updateChemistryField('sdi', v);
                 }}
               />
               <FieldInput
-                label='Organics'
+                label='Organics (TOC)'
                 value={0.8}
                 unit='mg/L'
-                range='0-40'
+                range='0–40'
               />
             </div>
           </div>
@@ -921,7 +1207,13 @@ export function FeedSetupView() {
       </Card>
 
       {/* ── Solute Configuration ── */}
-      <Card className='mb-3 border-border/40 shadow-sm overflow-hidden bg-white'>
+      <Card
+        className={cn(
+          'mb-3 border-border/40 shadow-sm overflow-hidden bg-white',
+          isChargeBalanced && 'opacity-50 pointer-events-none',
+        )}
+        style={{ fontFamily: "'Open Sans', sans-serif" }}
+      >
         <div className='px-4 py-2.5 border-b border-border/40 bg-white flex items-center gap-2'>
           <FlaskConical className='w-4 h-4 text-primary' />
           <h2 className='text-sm font-semibold text-foreground'>
@@ -939,7 +1231,7 @@ export function FeedSetupView() {
                 <span className='text-[10px] font-bold uppercase tracking-widest text-slate-500'>
                   Dose Concentration
                 </span>
-                <span className='text-[10px] text-muted-foreground/40 font-mono'>
+                <span className='text-[10px] text-muted-foreground/40'>
                   compound → ions
                 </span>
               </div>
@@ -963,7 +1255,7 @@ export function FeedSetupView() {
                     className='w-24 h-9 px-3 font-mono text-sm bg-transparent outline-none border-none text-foreground placeholder:text-muted-foreground/30'
                   />
                   <div className='flex items-center px-2 bg-slate-50 border-l border-border/50'>
-                    <span className='text-[10px] font-mono text-muted-foreground/60 select-none'>
+                    <span className='text-[10px] text-muted-foreground/60 select-none'>
                       mg/L
                     </span>
                   </div>
@@ -974,14 +1266,14 @@ export function FeedSetupView() {
                     setQuickCompound(v as typeof quickCompound)
                   }
                 >
-                  <SelectTrigger className='h-9 text-[11px] w-[86px] border-border/60 bg-white shadow-none focus:ring-1 focus:ring-primary/20 px-2.5 font-mono font-bold'>
+                  <SelectTrigger className='h-9 text-[11px] w-[86px] border-border/60 bg-white shadow-none focus:ring-1 focus:ring-primary/20 px-2.5 font-bold'>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='NaCl' className='text-[11px] font-mono'>
+                    <SelectItem value='NaCl' className='text-[11px]'>
                       NaCl
                     </SelectItem>
-                    <SelectItem value='MgSO4' className='text-[11px] font-mono'>
+                    <SelectItem value='MgSO4' className='text-[11px]'>
                       MgSO₄
                     </SelectItem>
                   </SelectContent>
@@ -989,19 +1281,19 @@ export function FeedSetupView() {
               </div>
 
               {/* Live preview */}
-              <div className='rounded border border-border/40 bg-slate-50 px-3 py-2 font-mono text-[11px] leading-relaxed min-h-[38px] flex items-center'>
+              <div className='rounded border border-border/40 bg-slate-50 px-3 py-2 text-[11px] leading-relaxed min-h-[38px] flex items-center'>
                 {(() => {
                   const v = parseFloat(doseValue);
                   if (isFinite(v) && v > 0) {
                     if (quickCompound === 'NaCl') {
                       return (
                         <span>
-                          <span className='text-blue-600 font-semibold'>
+                          <span className='text-blue-600 font-semibold font-mono'>
                             {((v * 22.99) / 58.44).toFixed(2)}
                           </span>
                           <span className='text-slate-400'> Na⁺ </span>
                           <span className='text-slate-300'>+</span>
-                          <span className='text-orange-600 font-semibold'>
+                          <span className='text-orange-600 font-semibold font-mono'>
                             {' '}
                             {((v * 35.45) / 58.44).toFixed(2)}
                           </span>
@@ -1014,12 +1306,12 @@ export function FeedSetupView() {
                     }
                     return (
                       <span>
-                        <span className='text-blue-600 font-semibold'>
+                        <span className='text-blue-600 font-semibold font-mono'>
                           {((v * 24.31) / 120.37).toFixed(2)}
                         </span>
                         <span className='text-slate-400'> Mg²⁺ </span>
                         <span className='text-slate-300'>+</span>
-                        <span className='text-orange-600 font-semibold'>
+                        <span className='text-orange-600 font-semibold font-mono'>
                           {' '}
                           {((v * 96.06) / 120.37).toFixed(2)}
                         </span>
@@ -1060,7 +1352,7 @@ export function FeedSetupView() {
                 <span className='text-[10px] font-bold uppercase tracking-widest text-slate-500'>
                   Manual Ion Addition
                 </span>
-                <span className='text-[10px] text-muted-foreground/40 font-mono'>
+                <span className='text-[10px] text-muted-foreground/40'>
                   direct mg/L
                 </span>
               </div>
@@ -1085,12 +1377,12 @@ export function FeedSetupView() {
                     className='w-24 h-9 px-3 font-mono text-sm bg-transparent outline-none border-none text-foreground placeholder:text-muted-foreground/30'
                   />
                   <div className='flex items-center px-2 bg-slate-50 border-l border-border/50'>
-                    <span className='text-[10px] font-mono text-muted-foreground/60 select-none'>
+                    <span className='text-[10px] text-muted-foreground/60 select-none'>
                       mg/L
                     </span>
                   </div>
                 </div>
-                <span className='text-[10px] text-muted-foreground/40 font-mono'>
+                <span className='text-[10px] text-muted-foreground/40'>
                   empty = ion default
                 </span>
               </div>
@@ -1119,7 +1411,7 @@ export function FeedSetupView() {
                         key={key}
                         onClick={() => handleDirectAddIon(key)}
                         title={`+${def} mg/L if empty`}
-                        className='h-7 px-2.5 font-mono text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200/60 rounded hover:bg-blue-100 hover:border-blue-400/70 active:scale-95 transition-all duration-100'
+                        className='h-7 px-2.5 text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200/60 rounded hover:bg-blue-100 hover:border-blue-400/70 active:scale-95 transition-all duration-100'
                       >
                         {sym}
                       </button>
@@ -1148,7 +1440,7 @@ export function FeedSetupView() {
                         key={key}
                         onClick={() => handleDirectAddIon(key)}
                         title={`+${def} mg/L if empty`}
-                        className='h-7 px-2.5 font-mono text-[11px] font-bold text-orange-700 bg-orange-50 border border-orange-200/60 rounded hover:bg-orange-100 hover:border-orange-400/70 active:scale-95 transition-all duration-100'
+                        className='h-7 px-2.5 text-[11px] font-bold text-orange-700 bg-orange-50 border border-orange-200/60 rounded hover:bg-orange-100 hover:border-orange-400/70 active:scale-95 transition-all duration-100'
                       >
                         {sym}
                       </button>
@@ -1198,7 +1490,7 @@ export function FeedSetupView() {
                     key={mode}
                     onClick={() => handleAdjustBalance(mode)}
                     title={desc}
-                    className='flex items-center gap-1 h-7 px-2.5 text-[11px] font-mono text-slate-600 bg-white border border-border/60 rounded hover:border-primary/40 hover:text-primary hover:bg-primary/5 active:scale-95 transition-all duration-100'
+                    className='flex items-center gap-1 h-7 px-2.5 text-[11px] text-slate-600 bg-white border border-border/60 rounded hover:border-primary/40 hover:text-primary hover:bg-primary/5 active:scale-95 transition-all duration-100'
                   >
                     <RefreshCw className='w-2.5 h-2.5 opacity-50' />
                     {label}
@@ -1219,12 +1511,13 @@ export function FeedSetupView() {
                 <button
                   onClick={handleAdjustPH}
                   title={`Redistribute CO₂/HCO₃⁻/CO₃²⁻ at pH ${ph.toFixed(1)}`}
-                  className='flex items-center gap-1.5 h-7 px-2.5 text-[11px] font-mono text-teal-700 bg-teal-50/80 border border-teal-200/70 rounded hover:bg-teal-100 hover:border-teal-400/60 active:scale-95 transition-all duration-100'
+                  className='flex items-center gap-1.5 h-7 px-2.5 text-[11px] text-teal-700 bg-teal-50/80 border border-teal-200/70 rounded hover:bg-teal-100 hover:border-teal-400/60 active:scale-95 transition-all duration-100'
                 >
                   <RefreshCw className='w-2.5 h-2.5 opacity-70' />
-                  Redistribute at pH {ph.toFixed(1)}
+                  Redistribute at pH{' '}
+                  <span className='font-mono'>{ph.toFixed(1)}</span>
                 </button>
-                <span className='text-[10px] font-mono text-muted-foreground/40'>
+                <span className='text-[10px] text-muted-foreground/40'>
                   CO₂ ↔ HCO₃⁻ ↔ CO₃²⁻
                 </span>
               </div>
@@ -1232,6 +1525,20 @@ export function FeedSetupView() {
           </div>
         </div>
       </Card>
+
+      {/* ── Empty State Guidance ── */}
+      {!hasIons && (
+        <div className='mb-4 bg-primary/5 border border-primary/20 rounded-xl p-6 flex flex-col items-center justify-center text-center'>
+          <FlaskConical className='w-10 h-10 text-primary/40 mb-3' />
+          <h3 className='text-base font-bold text-slate-800 mb-1'>
+            Begin Feed Chemistry Configuration
+          </h3>
+          <p className='text-[13px] text-slate-600 max-w-md'>
+            This stream is currently empty. Use the Solute Configuration tools
+            above to add compounds or manually enter ion concentrations below.
+          </p>
+        </div>
+      )}
 
       {/* ── Ion Tables ── */}
       <div className='grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4'>
@@ -1392,9 +1699,15 @@ export function FeedSetupView() {
                 bar
               </span>
             </div>
-            <span className='text-[10px] font-medium text-muted-foreground/60 mt-1'>
-              Estimated driving force
-            </span>
+            {activeTemperatureView !== 'design' ? (
+              <span className='text-[9px] uppercase tracking-widest text-amber-500 font-bold mt-1'>
+                Sensitivity · Not Simulation
+              </span>
+            ) : (
+              <span className='text-[10px] font-medium text-muted-foreground/60 mt-1'>
+                Estimated driving force
+              </span>
+            )}
           </div>
         </div>
       </div>

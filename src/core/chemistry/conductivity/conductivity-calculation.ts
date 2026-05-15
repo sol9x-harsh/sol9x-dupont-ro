@@ -1,14 +1,14 @@
-import { IONS } from "@/core/constants/ions";
-import { safeConcentration } from "@/core/chemistry/conversions/normalization";
-import type { IonConcentrationMap } from "@/core/chemistry/balance/charge-balance";
+import { IONS } from '@/core/constants/ions';
+import { safeConcentration } from '@/core/chemistry/conversions/normalization';
+import type { IonConcentrationMap } from '@/core/chemistry/balance/charge-balance';
 import {
   CONDUCTIVITY_TDS_FACTOR_DEFAULT,
   ION_CONDUCTIVITY_FACTORS,
   CONDUCTIVITY_MIN_COMPUTABLE_US_CM,
   CONDUCTIVITY_CROSS_CHECK_TOLERANCE_PCT,
-} from "@/core/chemistry/conductivity/conductivity.constants";
+} from '@/core/chemistry/conductivity/conductivity.constants';
 
-export type ConductivityEstimationMethod = "tds" | "ion-weighted" | "hybrid";
+export type ConductivityEstimationMethod = 'tds' | 'ion-weighted' | 'hybrid';
 
 // ─── TDS-based estimation ─────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ export type ConductivityEstimationMethod = "tds" | "ion-weighted" | "hybrid";
  */
 export function estimateConductivityFromTDS(
   tdsMgL: number,
-  factor: number = CONDUCTIVITY_TDS_FACTOR_DEFAULT
+  factor: number = CONDUCTIVITY_TDS_FACTOR_DEFAULT,
 ): number {
   if (!Number.isFinite(tdsMgL) || tdsMgL <= 0) return 0;
   if (!Number.isFinite(factor) || factor <= 0) return 0;
@@ -39,8 +39,9 @@ export function estimateConductivityFromTDS(
  * - Invalid/NaN/negative values are treated as zero.
  */
 export function estimateConductivityFromIons(
-  concentrations: IonConcentrationMap
+  concentrations: IonConcentrationMap,
 ): number {
+  let totalTDS = 0;
   let total = 0;
 
   for (const [ionId, raw] of Object.entries(concentrations)) {
@@ -50,13 +51,22 @@ export function estimateConductivityFromIons(
     const mgL = safeConcentration(raw);
     if (mgL <= 0) continue;
 
+    totalTDS += mgL;
+
     const factor = ION_CONDUCTIVITY_FACTORS[ionId];
     if (factor === undefined || !Number.isFinite(factor)) continue;
 
     total += mgL * factor;
   }
 
-  return total;
+  // Ionic-strength correction: λ° values are at infinite dilution; at seawater
+  // concentrations (~0.7 mol/L) the actual conductivity is ~25-30% lower.
+  // I_proxy (mol/L) ≈ TDS(mg/L) / 40,000 (empirical average equivalent weight)
+  // Onsager-like attenuation: 1 / (1 + 0.40 × √I)
+  const iProxy = totalTDS / 40_000;
+  const attenuation = 1 / (1 + 0.4 * Math.sqrt(iProxy));
+
+  return total * attenuation;
 }
 
 // ─── Hybrid estimation ────────────────────────────────────────────────────────
@@ -69,7 +79,7 @@ export function estimateConductivityFromIons(
 export function estimateConductivityHybrid(
   tdsMgL: number,
   concentrations: IonConcentrationMap,
-  factor: number = CONDUCTIVITY_TDS_FACTOR_DEFAULT
+  factor: number = CONDUCTIVITY_TDS_FACTOR_DEFAULT,
 ): number {
   const fromTDS = estimateConductivityFromTDS(tdsMgL, factor);
   const fromIons = estimateConductivityFromIons(concentrations);
@@ -92,14 +102,11 @@ export function estimateConductivityHybrid(
 export function crossCheckConductivity(
   estimateA: number,
   estimateB: number,
-  tolerancePct: number = CONDUCTIVITY_CROSS_CHECK_TOLERANCE_PCT
+  tolerancePct: number = CONDUCTIVITY_CROSS_CHECK_TOLERANCE_PCT,
 ): { deviationPct: number; isWithinTolerance: boolean } {
   const avg = (estimateA + estimateB) / 2;
 
-  if (
-    !Number.isFinite(avg) ||
-    avg < CONDUCTIVITY_MIN_COMPUTABLE_US_CM
-  ) {
+  if (!Number.isFinite(avg) || avg < CONDUCTIVITY_MIN_COMPUTABLE_US_CM) {
     return { deviationPct: 0, isWithinTolerance: true };
   }
 

@@ -20,3 +20,12 @@ export const TDS_MIN_COMPUTABLE_MG_L = 1;
 // Engineering ceiling for RO applications
 export const TDS_MAX_ENGINEERING_MG_L = 80_000;
 
+// ─── TDS exclusion list ───────────────────────────────────────────────────────
+// Dissolved gases and non-ionic volatile species that do NOT contribute to TDS
+// per standard RO engineering practice (ASTM D1125 aligned).
+// These species remain available for carbonate equilibrium, scaling, and pH
+// calculations — they are excluded from TDS summation only.
+export const TDS_EXCLUDED_SPECIES = new Set<string>([
+  'CO2', // dissolved carbon dioxide — volatile gas, not a dissolved solid
+  'H2S', // dissolved hydrogen sulfide — volatile gas, not a dissolved solid
+]);

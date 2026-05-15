@@ -1,5 +1,8 @@
-import { safeConcentration } from "@/core/chemistry/conversions/normalization";
-import { TDS_MIN_COMPUTABLE_MG_L } from "@/core/chemistry/tds/tds.constants";
+import { safeConcentration } from '@/core/chemistry/conversions/normalization';
+import {
+  TDS_MIN_COMPUTABLE_MG_L,
+  TDS_EXCLUDED_SPECIES,
+} from '@/core/chemistry/tds/tds.constants';
 
 // Same shape as IonConcentrationMap in charge-balance — defined locally to avoid circular imports
 type IonConcentrationMap = Partial<Record<string, number | null | undefined>>;
@@ -17,8 +20,8 @@ type IonConcentrationMap = Partial<Record<string, number | null | undefined>>;
 export function calculateTDS(concentrations: IonConcentrationMap): number {
   let total = 0;
 
-  for (const [, raw] of Object.entries(concentrations)) {
-    // TDS is the raw sum of all dissolved species in mg/L — no IONS lookup needed.
+  for (const [ionId, raw] of Object.entries(concentrations)) {
+    if (TDS_EXCLUDED_SPECIES.has(ionId)) continue;
     const mgL = safeConcentration(raw);
     if (mgL <= 0) continue;
     total += mgL;
@@ -32,11 +35,12 @@ export function calculateTDS(concentrations: IonConcentrationMap): number {
  * Skips the safeConcentration guard — use only with output of normalizeConcentrations().
  */
 export function calculateTDSFromNormalized(
-  concentrations: Record<string, number>
+  concentrations: Record<string, number>,
 ): number {
   let total = 0;
 
-  for (const [, mgL] of Object.entries(concentrations)) {
+  for (const [ionId, mgL] of Object.entries(concentrations)) {
+    if (TDS_EXCLUDED_SPECIES.has(ionId)) continue;
     if (mgL <= 0) continue;
     total += mgL;
   }
@@ -53,7 +57,7 @@ export function calculateTDSFromNormalized(
 export function crossCheckTDS(
   calculatedTDS: number,
   measuredTDS: number,
-  tolerancePct: number
+  tolerancePct: number,
 ): { deviationPct: number; isWithinTolerance: boolean } {
   if (
     !Number.isFinite(measuredTDS) ||

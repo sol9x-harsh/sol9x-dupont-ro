@@ -74,7 +74,7 @@ export default function StudioPage({ params }: Props) {
       onUnits={setUnits}
       projectName={currentProject?.name ?? projectId}
       onSave={save}
-      isSaving={status === 'saving'}
+      saveStatus={status}
       savedAt={savedAt}
     >
       {activeScreen === 'profile' && <ProjectProfileView />}

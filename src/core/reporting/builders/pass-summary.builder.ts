@@ -93,7 +93,7 @@ export function buildPassSummaryReport(
       netRecoveryPercent: recoveryFraction * 100,
       avgNdpBar,
       specificEnergykWh: specificEnergy,
-      tempC: feedChemistry.temperature,
+      tempC: feedChemistry.designTemperature,
       pH: feedChemistry.ph,
       chemicalDose: undefined,
     });

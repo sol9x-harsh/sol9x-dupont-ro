@@ -19,6 +19,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   LogOut,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +30,7 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { SimulationWarnings } from '@/components/engineering/SimulationWarnings';
+import { type SaveStatus } from '@/hooks/useProjectPersistence';
 
 export type Screen = 'profile' | 'design' | 'feed' | 'config' | 'report';
 
@@ -51,7 +54,7 @@ interface Props {
   children: React.ReactNode;
   projectName?: string;
   onSave?: () => void;
-  isSaving?: boolean;
+  saveStatus?: SaveStatus;
   savedAt?: string | null;
 }
 
@@ -61,7 +64,7 @@ export function StudioShell({
   children,
   projectName,
   onSave,
-  isSaving: externalIsSaving,
+  saveStatus: externalSaveStatus,
   savedAt: externalSavedAt,
 }: Props) {
   const router = useRouter();
@@ -70,8 +73,11 @@ export function StudioShell({
   const [collapsed, setCollapsed] = React.useState(false);
   const [internalSaving, setInternalSaving] = React.useState(false);
   const [internalSavedAt, setInternalSavedAt] = React.useState<string | null>(null);
+  const [showSignoutModal, setShowSignoutModal] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
 
-  const saving  = onSave ? (externalIsSaving ?? false) : internalSaving;
+  const saveStatus: SaveStatus = onSave ? (externalSaveStatus ?? 'saved') : (internalSaving ? 'saving' : 'saved');
+  const saving  = saveStatus === 'saving';
   const savedAt = onSave ? externalSavedAt : internalSavedAt;
 
   const idx = NAV.findIndex((n) => n.id === active);
@@ -82,6 +88,11 @@ export function StudioShell({
     const unsubscribe = initSimulationTriggers();
     return unsubscribe;
   }, []);
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    await signOut({ callbackUrl: '/login' });
+  };
 
   const handleSave = () => {
     if (onSave) { onSave(); return; }
@@ -306,7 +317,7 @@ export function StudioShell({
                     <div className='text-[10px] text-slate-400 font-bold truncate uppercase tracking-wider'>{userCompany}</div>
                   </div>
                   <button
-                    onClick={() => signOut({ callbackUrl: '/login' })}
+                    onClick={() => setShowSignoutModal(true)}
                     className='p-2 text-slate-300 hover:text-destructive transition-colors'
                     title='Sign out'
                   >
@@ -339,11 +350,30 @@ export function StudioShell({
             </div>
 
             <div className='flex items-center gap-6'>
-              {savedAt && (
-                <div className='text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:block'>
-                  Saved at {savedAt}
-                </div>
-              )}
+              {/* Save status */}
+              <div className='hidden md:flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest min-w-30 justify-end'>
+                {saveStatus === 'saving' && (
+                  <>
+                    <Loader2 className='w-3 h-3 animate-spin text-slate-400 shrink-0' />
+                    <span className='text-slate-400'>Saving…</span>
+                  </>
+                )}
+                {saveStatus === 'unsaved' && (
+                  <>
+                    <span className='w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0' />
+                    <span className='text-amber-500'>Unsaved changes</span>
+                  </>
+                )}
+                {saveStatus === 'error' && (
+                  <>
+                    <span className='w-1.5 h-1.5 rounded-full bg-red-500 shrink-0' />
+                    <span className='text-red-500'>Save failed</span>
+                  </>
+                )}
+                {saveStatus === 'saved' && savedAt && (
+                  <span className='text-slate-400'>Saved {savedAt}</span>
+                )}
+              </div>
               <Button
                 onClick={handleSave}
                 disabled={saving}
@@ -407,6 +437,99 @@ export function StudioShell({
           </footer>
         </div>
       </div>
+
+      {/* ── Sign-out confirmation modal ── */}
+      {showSignoutModal && (
+        <div
+          className='fixed inset-0 z-50 flex items-center justify-center'
+          role='dialog'
+          aria-modal='true'
+          aria-labelledby='signout-title'
+        >
+          {/* Backdrop */}
+          <div
+            className='absolute inset-0 bg-slate-950/60 backdrop-blur-sm'
+            onClick={() => !signingOut && setShowSignoutModal(false)}
+          />
+
+          {/* Panel */}
+          <div className='relative w-full max-w-[400px] mx-4 bg-white border border-slate-200 rounded-2xl shadow-2xl shadow-slate-900/20 overflow-hidden animate-in fade-in zoom-in-95 duration-200'>
+
+            {/* Top accent bar */}
+            <div className='h-[3px] w-full bg-linear-to-r from-primary via-primary-glow to-primary' />
+
+            {/* Header */}
+            <div className='flex items-start justify-between px-6 pt-5 pb-4'>
+              <div className='flex items-center gap-3'>
+                <div className='w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0'>
+                  <AlertTriangle className='w-4 h-4 text-amber-500' />
+                </div>
+                <div>
+                  <h2 id='signout-title' className='font-display font-bold text-slate-900 text-sm tracking-tight'>
+                    Terminate Session
+                  </h2>
+                  <p className='text-[10px] uppercase tracking-[0.2em] text-slate-400 font-bold mt-0.5'>
+                    SOL9X Studio · Auth
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSignoutModal(false)}
+                disabled={signingOut}
+                className='p-1.5 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-all disabled:opacity-40'
+              >
+                <X className='w-4 h-4' />
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className='h-px bg-slate-100 mx-6' />
+
+            {/* Body */}
+            <div className='px-6 py-4 space-y-3'>
+              <p className='text-xs text-slate-600 leading-relaxed'>
+                You are about to sign out of the active engineering session for
+                {' '}<span className='font-bold text-slate-900 font-mono'>{projectName || 'RO Design Studio'}</span>.
+              </p>
+              <div className='bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 space-y-1.5'>
+                <div className='flex items-center gap-2'>
+                  <span className='w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0' />
+                  <span className='text-[11px] text-slate-500'>Unsaved calculations will be discarded</span>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <span className='w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0' />
+                  <span className='text-[11px] text-slate-500'>Last saved state will be retained</span>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <span className='w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0' />
+                  <span className='text-[11px] text-slate-500'>Session tokens will be cleared</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className='px-6 pb-5 flex items-center gap-3'>
+              <button
+                onClick={() => setShowSignoutModal(false)}
+                disabled={signingOut}
+                className='flex-1 h-9 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all disabled:opacity-40'
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className='flex-1 h-9 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2'
+              >
+                {signingOut
+                  ? <><Loader2 className='w-3.5 h-3.5 animate-spin' /> SIGNING OUT…</>
+                  : <><LogOut className='w-3.5 h-3.5' /> SIGN OUT</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </TooltipProvider>
   );
 }

@@ -2,34 +2,48 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '@/store/project-store';
-import { useFeedStore } from '@/store/feed-store';
+import { useFeedStore, isTempHierarchyValid } from '@/store/feed-store';
 import { useROConfigStore } from '@/store/ro-config-store';
 import { useReportStore } from '@/store/report-store';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
 
+/** Snapshot of all studio store state to send to the API. */
 function buildPayload() {
   const { currentProject } = useProjectStore.getState();
-  const { preset, chemistry, streamLabel } = useFeedStore.getState();
-  const { passes, feedFlow, systemRecovery, feedPressureBar, permeatePressureBar, chemicalAdjustment } =
-    useROConfigStore.getState();
+  const { preset, waterType, chemistry, streamLabel, streams, activeStreamId } = useFeedStore.getState();
+  const {
+    passes,
+    feedFlow,
+    systemRecovery,
+    feedPressureBar,
+    permeatePressureBar,
+    chemicalAdjustment,
+  } = useROConfigStore.getState();
   const { selectedSections, climateMode, exportSettings } = useReportStore.getState();
 
   return {
     metadata: currentProject,
-    feed: { preset, chemistry, streamLabel },
-    roConfig: { passes, feedFlow, systemRecovery, feedPressureBar, permeatePressureBar, chemicalAdjustment },
+    feed: { preset, waterType, chemistry, streamLabel, streams, activeStreamId },
+    roConfig: {
+      passes,
+      feedFlow,
+      systemRecovery,
+      feedPressureBar,
+      permeatePressureBar,
+      chemicalAdjustment,
+    },
     report: { selectedSections, climateMode, exportSettings },
   };
 }
 
 function formatLocalTime(d: Date) {
-  return d.toLocaleTimeString([], { 
-    hour: '2-digit', 
+  return d.toLocaleTimeString([], {
+    hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: true 
+    hour12: true,
   });
 }
 
@@ -43,38 +57,59 @@ export function useProjectPersistence(projectId: string) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDemoProject = DEMO_IDS.has(projectId);
 
-  const saveMutation = useMutation({
+  // ── React Query mutation ──────────────────────────────────────────────────
+  const saveMutation = useMutation<{ savedAt: string }, Error, void>({
+    mutationKey: ['project-save', projectId],
     mutationFn: async () => {
-      if (isDemoProject) return null;
-      const res = await fetch(`/api/projects/${projectId}`, {
-        method: 'PUT',
+      const res = await fetch(`/api/projects/${projectId}/save`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildPayload()),
       });
-      if (!res.ok) throw new Error('Save failed');
-      return res.json();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Save failed');
+      }
+      return res.json() as Promise<{ savedAt: string }>;
     },
     onMutate: () => {
-      setIsDirty(false); // Reset dirty flag when save starts
+      setIsDirty(false);
     },
-    onSuccess: () => {
-      setSavedAt(formatLocalTime(new Date()));
+    onSuccess: (data) => {
+      // Display the timestamp returned by the server
+      setSavedAt(formatLocalTime(new Date(data.savedAt)));
+      // Refresh projects list so the dashboard shows current state
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+    onError: () => {
+      // Re-mark dirty so the next store change retriggers autosave
+      setIsDirty(true);
     },
   });
 
+  // ── Manual save ──────────────────────────────────────────────────────────
   const save = useCallback(() => {
+    if (isDemoProject) return;
+    if (!isTempHierarchyValid()) return; // blocked — invalid temperature hierarchy
     saveMutation.mutate();
-  }, [saveMutation]);
+  }, [isDemoProject, saveMutation]);
 
-  // Autosave: subscribe to all store changes, debounce at AUTOSAVE_DELAY_MS
+  // Stable ref so the subscription effect never stale-closes over save
+  const saveRef = useRef(save);
+  useEffect(() => {
+    saveRef.current = save;
+  }, [save]);
+
+  // ── Auto-save: subscribe to store changes, debounce ──────────────────────
   useEffect(() => {
     if (isDemoProject) return;
 
     function markDirty() {
       setIsDirty(true);
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(save, AUTOSAVE_DELAY_MS);
+      debounceRef.current = setTimeout(() => {
+        if (isTempHierarchyValid()) saveRef.current();
+      }, AUTOSAVE_DELAY_MS);
     }
 
     const unsubs = [
@@ -88,9 +123,10 @@ export function useProjectPersistence(projectId: string) {
       unsubs.forEach((u) => u());
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [projectId, isDemoProject, save]);
+    // Only re-subscribe when the project changes — not on every render
+  }, [projectId, isDemoProject]);
 
-  // Determine user-facing status
+  // ── Derived status ───────────────────────────────────────────────────────
   let status: SaveStatus = 'saved';
   if (saveMutation.isPending) status = 'saving';
   else if (saveMutation.isError) status = 'error';

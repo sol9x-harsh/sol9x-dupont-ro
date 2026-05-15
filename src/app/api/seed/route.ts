@@ -80,7 +80,7 @@ export async function GET() {
 
       feed: {
         preset: 'seawater',
-        streamLabel: 'Feed-01',
+        streamLabel: 'Stream 01',
         chemistry: DEMO_FEED_CHEMISTRY,
       },
 

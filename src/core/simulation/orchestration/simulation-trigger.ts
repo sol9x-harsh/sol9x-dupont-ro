@@ -15,9 +15,9 @@
  *   // on unmount: unsubscribe();
  */
 
-import { useFeedStore } from "@/store/feed-store";
-import { useROConfigStore } from "@/store/ro-config-store";
-import { runSimulation } from "@/store/simulation/simulation-actions";
+import { useFeedStore, isTempHierarchyValid } from '@/store/feed-store';
+import { useROConfigStore } from '@/store/ro-config-store';
+import { runSimulation } from '@/store/simulation/simulation-actions';
 
 type UnsubscribeFn = () => void;
 
@@ -28,7 +28,7 @@ type FeedSnapshot = {
   ions: string; // JSON-stringified for stable comparison
   tds: number;
   conductivity: number;
-  temperature: number;
+  designTemperature: number;
   ph: number;
 };
 
@@ -47,14 +47,19 @@ function snapshotFeed(): FeedSnapshot {
     ions: JSON.stringify(chemistry.ions),
     tds: chemistry.tds,
     conductivity: chemistry.conductivity,
-    temperature: chemistry.temperature,
+    designTemperature: chemistry.designTemperature,
     ph: chemistry.ph,
   };
 }
 
 function snapshotROConfig(): ROConfigSnapshot {
-  const { feedFlow, systemRecovery, feedPressureBar, permeatePressureBar, passes } =
-    useROConfigStore.getState();
+  const {
+    feedFlow,
+    systemRecovery,
+    feedPressureBar,
+    permeatePressureBar,
+    passes,
+  } = useROConfigStore.getState();
   return {
     feedFlow,
     systemRecovery,
@@ -74,12 +79,15 @@ function snapshotROConfig(): ROConfigSnapshot {
             membrane: v.membraneModel,
           })),
         })),
-      }))
+      })),
     ),
   };
 }
 
-function snapshotsEqual<T extends Record<string, unknown>>(a: T, b: T): boolean {
+function snapshotsEqual<T extends Record<string, unknown>>(
+  a: T,
+  b: T,
+): boolean {
   for (const key in a) {
     if (a[key] !== b[key]) return false;
   }
@@ -102,6 +110,7 @@ export function initSimulationTriggers(): UnsubscribeFn {
     const next = snapshotFeed();
     if (!snapshotsEqual(next, lastFeed)) {
       lastFeed = next;
+      if (!isTempHierarchyValid()) return; // skip — invalid temp hierarchy
       runSimulation();
     }
   });

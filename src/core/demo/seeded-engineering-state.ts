@@ -10,15 +10,15 @@
  *       SW30HRLE-400i membrane
  */
 
-import type { FeedChemistry, FeedPreset } from "@/store/feed-store";
-import type { Pass } from "@/store/ro-config-store";
-import type { ProjectMetadata } from "@/store/project-store";
+import type { FeedChemistry, FeedPreset } from '@/store/feed-store';
+import type { Pass } from '@/store/ro-config-store';
+import type { ProjectMetadata } from '@/store/project-store';
 
 // ─── Feed ─────────────────────────────────────────────────────────────────────
 
-export const SEEDED_FEED_PRESET: FeedPreset = "seawater";
+export const SEEDED_FEED_PRESET: FeedPreset = 'seawater';
 
-export const SEEDED_FEED_STREAM_LABEL = "Feed-01";
+export const SEEDED_FEED_STREAM_LABEL = 'Stream 01';
 
 export const SEEDED_FEED_CHEMISTRY: FeedChemistry = {
   ions: {
@@ -52,16 +52,16 @@ export const SEEDED_FEED_CHEMISTRY: FeedChemistry = {
 // ─── Project ──────────────────────────────────────────────────────────────────
 
 export const SEEDED_PROJECT: ProjectMetadata = {
-  id: "demo-chennai-swro-001",
-  name: "Chennai SWRO Plant — Demo",
-  client: "SOL9X Demo Client",
-  location: "Chennai, Tamil Nadu, India",
-  description: "Seawater RO desalination — 250 m³/h feed — SW30HRLE-400i",
-  status: "active",
+  id: 'demo-chennai-swro-001',
+  name: 'Chennai SWRO Plant — Demo',
+  client: 'SOL9X Demo Client',
+  location: 'Chennai, Tamil Nadu, India',
+  description: 'Seawater RO desalination — 250 m³/h feed — SW30HRLE-400i',
+  status: 'active',
   recovery: 42,
-  createdAt: "2026-01-15T00:00:00.000Z",
+  createdAt: '2026-01-15T00:00:00.000Z',
   updatedAt: new Date().toISOString(),
-  notes: "Demo project — seeded state for development.",
+  notes: 'Demo project — seeded state for development.',
 };
 
 // ─── RO Configuration ────────────────────────────────────────────────────────
@@ -74,30 +74,30 @@ function makeVessels(
   passIdx: number,
   stageIdx: number,
   count: number,
-  elementsPerVessel: number
+  elementsPerVessel: number,
 ) {
   return Array.from({ length: count }, (_, i) => ({
     id: `p${passIdx + 1}-s${stageIdx + 1}-v${i + 1}`,
     label: `V${i + 1}`,
     elementsPerVessel,
-    membraneModel: "SW30HRLE-400i",
+    membraneModel: 'SW30HRLE-400i',
   }));
 }
 
 export const SEEDED_PASSES: Pass[] = [
   {
-    id: "pass-1",
-    label: "Pass 1",
+    id: 'pass-1',
+    label: 'Pass 1',
     recovery: 42,
     stages: [
       {
-        id: "stage-1",
-        label: "Stage 1",
+        id: 'stage-1',
+        label: 'Stage 1',
         vessels: makeVessels(0, 0, 42, 7),
       },
       {
-        id: "stage-2",
-        label: "Stage 2",
+        id: 'stage-2',
+        label: 'Stage 2',
         vessels: makeVessels(0, 1, 21, 7),
       },
     ],

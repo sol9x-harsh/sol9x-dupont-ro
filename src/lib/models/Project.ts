@@ -85,7 +85,10 @@ const FeedChemistrySchema = new Schema(
     sdi: { type: Number, default: 0 },
     turbidity: { type: Number, default: 0 },
     ph: { type: Number, default: 7.0 },
-    temperature: { type: Number, default: 25 },
+    temperature:       { type: Number, default: 25 }, // legacy compat — do not remove
+    designTemperature: { type: Number, default: 25 },
+    minTemperature:    { type: Number, default: 21 },
+    maxTemperature:    { type: Number, default: 30 },
   },
   { _id: false },
 );
@@ -120,8 +123,11 @@ export interface IProject extends Document {
   // Feed store state
   feed: {
     preset: string;
+    waterType: string;
     streamLabel: string;
     chemistry: Record<string, unknown>;
+    streams?: Record<string, unknown>;
+    activeStreamId?: string;
   };
 
   // RO config store state
@@ -175,8 +181,11 @@ const ProjectSchema = new Schema<IProject>(
 
     feed: {
       preset: { type: String, default: 'custom' },
-      streamLabel: { type: String, default: 'Feed-01' },
+      waterType: { type: String, default: 'Custom' }, // WaterType — backward compat default
+      streamLabel: { type: String, default: 'Stream 01' },
       chemistry: { type: FeedChemistrySchema, default: () => ({}) },
+      streams: { type: Schema.Types.Mixed, default: {} },
+      activeStreamId: { type: String, default: 'stream-01' },
     },
 
     roConfig: {

@@ -112,7 +112,7 @@ export function ROConfigView() {
   const storeRecovery = useROConfigStore((s) => s.systemRecovery);
   const storePressure = useROConfigStore((s) => s.feedPressureBar);
   const storePermeatePressure = useROConfigStore((s) => s.permeatePressureBar);
-  const systemTemperature = useFeedStore((s) => s.chemistry.temperature);
+  const systemTemperature = useFeedStore((s) => s.chemistry.designTemperature);
 
   const liveRecovery = useSimulationStore(selectSystemRecoveryPercent);
   const livePermeateFlow = useSimulationStore(selectTotalPermeateFlow);
@@ -1356,7 +1356,7 @@ export function ROConfigView() {
                 if (!isNaN(val) && val >= 0 && val <= 80) {
                   useFeedStore
                     .getState()
-                    .updateChemistryField('temperature', val);
+                    .updateChemistryField('designTemperature', val);
                 }
               }}
               className='h-8 w-14 text-xs border-0 focus-visible:ring-0 rounded-none bg-transparent px-2 font-mono'

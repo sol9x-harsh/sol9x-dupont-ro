@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { NumericInput } from '@/components/ui/numeric-input';
 import { useROConfigStore } from '@/store/ro-config-store';
@@ -19,17 +21,22 @@ export function SystemDesignPFD({ editable = false }: { editable?: boolean }) {
   const concentrateFlow = useSimulationStore(selectConcentrateFlow);
   const permeateTDS = useSimulationStore(selectBlendedPermeateTDS);
 
-  const { 
-    feedFlow: storeFeedFlow, 
+  const {
+    feedFlow: storeFeedFlow,
     permeateFlow: storePermeateFlow,
+    systemRecovery: storeRecovery,
     setFeedFlow,
     setPermeateFlow,
     setSystemRecovery
   } = useROConfigStore();
 
   const displayFeed = editable ? storeFeedFlow : (flows?.feedFlowM3h ?? 0);
-  const displayPermeate = editable ? storePermeateFlow : (permeateFlow ?? 0);
+  // Derive permeate from feedFlow × recovery if the stored value hasn't been computed yet
+  const derivedPermeate = storeFeedFlow > 0 ? (storeFeedFlow * storeRecovery) / 100 : storePermeateFlow;
+  const displayPermeate = editable ? derivedPermeate : (permeateFlow ?? 0);
   const displayConcentrate = concentrateFlow ?? 0;
+
+  const [activeFlowInput, setActiveFlowInput] = useState<'feed' | 'product'>('feed');
 
   return (
     <div className='flex items-center justify-between relative max-w-5xl mx-auto py-12'>
@@ -37,7 +44,16 @@ export function SystemDesignPFD({ editable = false }: { editable?: boolean }) {
       <div className='relative z-10'>
         <div className='w-48 bg-white border border-border/60 rounded-xl shadow-sm overflow-hidden transition-all hover:shadow-md'>
           <div className='bg-feed/3 px-3 py-2 border-b border-border/40 flex items-center gap-2'>
-            <div className='w-2.5 h-2.5 rounded-full border-2 border-feed bg-white' />
+            {editable ? (
+              <input 
+                type="radio" 
+                checked={activeFlowInput === 'feed'} 
+                onChange={() => setActiveFlowInput('feed')}
+                className="w-3 h-3 accent-feed cursor-pointer"
+              />
+            ) : (
+              <div className='w-2.5 h-2.5 rounded-full border-2 border-feed bg-white' />
+            )}
             <span className='text-[10px] font-bold text-feed uppercase tracking-wider'>
               Feed Water
             </span>
@@ -46,25 +62,18 @@ export function SystemDesignPFD({ editable = false }: { editable?: boolean }) {
             {editable ? (
               <NumericInput
                 value={displayFeed}
+                disabled={activeFlowInput !== 'feed'}
                 onChange={(val) => {
                   if (val > 0) {
                     // Update feed flow. The store's setFeedFlow keeps recovery constant by default.
-                    // But if we want to follow the "Feed and Product are inputs" logic,
-                    // changing Feed while Product is fixed means Recovery must change.
-                    if (displayPermeate > 0) {
-                      const newRec = (displayPermeate / val) * 100;
-                      if (newRec > 0 && newRec <= 99) {
-                        setFeedFlow(val); // This will update storeFeedFlow
-                        setSystemRecovery(parseFloat(newRec.toFixed(2)));
-                      } else {
-                        setFeedFlow(val);
-                      }
-                    } else {
-                      setFeedFlow(val);
-                    }
+                    setFeedFlow(val);
                   }
                 }}
-                className='h-9 font-mono text-sm font-bold bg-slate-50/50 border-border focus-visible:ring-feed/30 w-[80px]'
+                className={cn('h-9 font-mono text-sm font-bold w-[80px]', 
+                  activeFlowInput === 'feed' 
+                    ? 'bg-slate-50/50 border-border focus-visible:ring-feed/30' 
+                    : 'bg-slate-100 border-slate-200 text-slate-400 opacity-70'
+                )}
                 precision={2}
               />
             ) : (
@@ -115,7 +124,16 @@ export function SystemDesignPFD({ editable = false }: { editable?: boolean }) {
         <div className='absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-permeate bg-white z-20' />
         <div className='w-48 bg-white border border-border/60 rounded-xl shadow-sm overflow-hidden transition-all hover:shadow-md'>
           <div className='bg-permeate/3 px-3 py-2 border-b border-border/40 flex items-center gap-2'>
-            <div className='w-2.5 h-2.5 rounded-full border-2 border-permeate-soft bg-white' />
+            {editable ? (
+              <input 
+                type="radio" 
+                checked={activeFlowInput === 'product'} 
+                onChange={() => setActiveFlowInput('product')}
+                className="w-3 h-3 accent-permeate cursor-pointer"
+              />
+            ) : (
+              <div className='w-2.5 h-2.5 rounded-full border-2 border-permeate-soft bg-white' />
+            )}
             <span className='text-[10px] font-bold text-permeate uppercase tracking-wider'>
               Product Water
             </span>
@@ -124,15 +142,19 @@ export function SystemDesignPFD({ editable = false }: { editable?: boolean }) {
             {editable ? (
               <NumericInput
                 value={displayPermeate}
+                disabled={activeFlowInput !== 'product'}
                 onChange={(val) => {
-                  if (displayFeed > 0 && val > 0) {
-                    const rec = (val / displayFeed) * 100;
-                    if (rec > 0 && rec < 100) {
-                      setPermeateFlow(val); // This will update storePermeateFlow and recalculate Recovery
-                    }
+                  if (val > 0 && storeRecovery > 0) {
+                    // Maintain recovery rate by adjusting feed flow
+                    const newFeed = val / (storeRecovery / 100);
+                    setFeedFlow(newFeed);
                   }
                 }}
-                className='h-9 font-mono text-sm font-bold bg-slate-50/50 border-border focus-visible:ring-permeate/30 w-[80px]'
+                className={cn('h-9 font-mono text-sm font-bold w-[80px]', 
+                  activeFlowInput === 'product' 
+                    ? 'bg-slate-50/50 border-border focus-visible:ring-permeate/30' 
+                    : 'bg-slate-100 border-slate-200 text-slate-400 opacity-70'
+                )}
                 precision={2}
               />
             ) : (

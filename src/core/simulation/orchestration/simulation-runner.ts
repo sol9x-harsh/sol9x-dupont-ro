@@ -11,48 +11,58 @@
  * No physics live here. No store writes happen here.
  */
 
-import { useFeedStore } from "@/store/feed-store";
-import { useROConfigStore } from "@/store/ro-config-store";
-import { runSimulation } from "@/core/simulation/engine/simulation-engine";
-import { SIMULATION_DEFAULTS } from "@/core/simulation/constants/simulation.constants";
-import { resolveMembraneProperties, classifyWaterType } from "@/core/constants/membrane";
-import type { MembraneDefaults } from "@/core/constants/membrane";
-import type { SimulationContext, StageGeometryContext } from "@/core/simulation/engine/simulation-context";
-import type { IonConcentrationMap } from "@/core/chemistry/balance/charge-balance";
-import type { SimulationResult } from "@/core/simulation/engine/simulation-engine";
-import { simulateChemicalAdjustment } from "@/core/chemistry/adjustment/chemical-adjustment";
+import { useFeedStore } from '@/store/feed-store';
+import { useROConfigStore } from '@/store/ro-config-store';
+import { runSimulation } from '@/core/simulation/engine/simulation-engine';
+import { SIMULATION_DEFAULTS } from '@/core/simulation/constants/simulation.constants';
+import {
+  resolveMembraneProperties,
+  classifyWaterType,
+} from '@/core/constants/membrane';
+import type { MembraneDefaults } from '@/core/constants/membrane';
+import type {
+  SimulationContext,
+  StageGeometryContext,
+} from '@/core/simulation/engine/simulation-context';
+import type { IonConcentrationMap } from '@/core/chemistry/balance/charge-balance';
+import type { SimulationResult } from '@/core/simulation/engine/simulation-engine';
+import { simulateChemicalAdjustment } from '@/core/chemistry/adjustment/chemical-adjustment';
 
 // ─── Context assembly ─────────────────────────────────────────────────────────
 
-function buildIonConcentrationMap(ions: ReturnType<typeof useFeedStore.getState>["chemistry"]["ions"]): IonConcentrationMap {
+function buildIonConcentrationMap(
+  ions: ReturnType<typeof useFeedStore.getState>['chemistry']['ions'],
+): IonConcentrationMap {
   // Keys MUST match the IONS constant abbreviations (Ca, Mg, Na…) so that
   // charge-balance, TDS, osmotic-pressure, and conductivity lookups resolve.
   return {
     // Cations
-    NH4:  ions.ammonium,
-    Na:   ions.sodium,
-    K:    ions.potassium,
-    Mg:   ions.magnesium,
-    Ca:   ions.calcium,
-    Sr:   ions.strontium,
-    Ba:   ions.barium,
+    NH4: ions.ammonium,
+    Na: ions.sodium,
+    K: ions.potassium,
+    Mg: ions.magnesium,
+    Ca: ions.calcium,
+    Sr: ions.strontium,
+    Ba: ions.barium,
     // Anions
-    CO3:  ions.carbonate,
+    CO3: ions.carbonate,
     HCO3: ions.bicarbonate,
-    NO3:  ions.nitrate,
-    F:    ions.fluoride,
-    Cl:   ions.chloride,
-    Br:   ions.bromide,
-    SO4:  ions.sulfate,
-    PO4:  ions.phosphate,
+    NO3: ions.nitrate,
+    F: ions.fluoride,
+    Cl: ions.chloride,
+    Br: ions.bromide,
+    SO4: ions.sulfate,
+    PO4: ions.phosphate,
     // Neutrals
     SiO2: ions.silica,
-    B:    ions.boron,
-    CO2:  ions.co2,
+    B: ions.boron,
+    CO2: ions.co2,
   };
 }
 
-function buildStageRecoveryFractions(passes: ReturnType<typeof useROConfigStore.getState>["passes"]): number[] {
+function buildStageRecoveryFractions(
+  passes: ReturnType<typeof useROConfigStore.getState>['passes'],
+): number[] {
   const fractions: number[] = [];
   for (const pass of passes) {
     const stageCount = pass.stages.length;
@@ -67,7 +77,9 @@ function buildStageRecoveryFractions(passes: ReturnType<typeof useROConfigStore.
 }
 
 // Read per-stage pressure drops from the store; fall back to engine default when not set.
-function buildStagePressureDrops(passes: ReturnType<typeof useROConfigStore.getState>["passes"]): number[] {
+function buildStagePressureDrops(
+  passes: ReturnType<typeof useROConfigStore.getState>['passes'],
+): number[] {
   const drops: number[] = [];
   for (const pass of passes) {
     for (const stage of pass.stages) {
@@ -75,7 +87,7 @@ function buildStagePressureDrops(passes: ReturnType<typeof useROConfigStore.getS
       drops.push(
         stage.pressureDropBar != null && stage.pressureDropBar >= 0
           ? stage.pressureDropBar
-          : SIMULATION_DEFAULTS.pressureDropPerStageBar
+          : SIMULATION_DEFAULTS.pressureDropPerStageBar,
       );
     }
   }
@@ -83,7 +95,7 @@ function buildStagePressureDrops(passes: ReturnType<typeof useROConfigStore.getS
 }
 
 function buildStageGeometries(
-  passes: ReturnType<typeof useROConfigStore.getState>["passes"],
+  passes: ReturnType<typeof useROConfigStore.getState>['passes'],
   resolvedArea: number,
 ): StageGeometryContext[] {
   const geometries: StageGeometryContext[] = [];
@@ -91,7 +103,9 @@ function buildStageGeometries(
     for (const stage of pass.stages) {
       const vesselCount = stage.vessels.length;
       if (vesselCount === 0) continue;
-      const elementsPerVessel = stage.vessels[0]?.elementsPerVessel ?? SIMULATION_DEFAULTS.elementCountPerVessel;
+      const elementsPerVessel =
+        stage.vessels[0]?.elementsPerVessel ??
+        SIMULATION_DEFAULTS.elementCountPerVessel;
       geometries.push({
         vesselCount,
         elementCountPerVessel: elementsPerVessel,
@@ -108,7 +122,7 @@ function isContextViable(
   feedFlowM3h: number,
   feedPressureBar: number,
   stageRecoveryFractions: number[],
-  stageGeometries: StageGeometryContext[]
+  stageGeometries: StageGeometryContext[],
 ): boolean {
   if (feedFlowM3h <= 0) return false;
   if (feedPressureBar <= 0) return false;
@@ -125,7 +139,7 @@ function isContextViable(
  * Uses the first vessel's membraneModel as representative of the system.
  */
 function extractMembraneModelName(
-  passes: ReturnType<typeof useROConfigStore.getState>["passes"]
+  passes: ReturnType<typeof useROConfigStore.getState>['passes'],
 ): string | null {
   for (const pass of passes) {
     for (const stage of pass.stages) {
@@ -150,8 +164,8 @@ export function buildSimulationContext(): SimulationContext | null {
   const adjustmentResult = simulateChemicalAdjustment(
     feed.chemistry.ions,
     feed.chemistry.ph,
-    feed.chemistry.temperature,
-    roConfig.chemicalAdjustment
+    feed.chemistry.designTemperature,
+    roConfig.chemicalAdjustment,
   );
   const finalIons = adjustmentResult.final.ions;
   const finalPh = adjustmentResult.final.ph;
@@ -162,13 +176,24 @@ export function buildSimulationContext(): SimulationContext | null {
   const membrane = resolveMembraneProperties(modelName, effectiveTDS);
 
   const stageRecoveryFractions = buildStageRecoveryFractions(roConfig.passes);
-  const stageGeometries = buildStageGeometries(roConfig.passes, membrane.activeArea);
+  const stageGeometries = buildStageGeometries(
+    roConfig.passes,
+    membrane.activeArea,
+  );
 
   // Use feedPressureBar from the store (seeded / user-set).
-  const feedPressureBar = roConfig.feedPressureBar > 0 ? roConfig.feedPressureBar : 10.0;
+  const feedPressureBar =
+    roConfig.feedPressureBar > 0 ? roConfig.feedPressureBar : 10.0;
   const feedFlowM3h = roConfig.feedFlow;
 
-  if (!isContextViable(feedFlowM3h, feedPressureBar, stageRecoveryFractions, stageGeometries)) {
+  if (
+    !isContextViable(
+      feedFlowM3h,
+      feedPressureBar,
+      stageRecoveryFractions,
+      stageGeometries,
+    )
+  ) {
     return null;
   }
 
@@ -185,8 +210,9 @@ export function buildSimulationContext(): SimulationContext | null {
     feed: {
       concentrations: buildIonConcentrationMap(finalIons),
       measuredTDSMgL: feed.chemistry.tds > 0 ? feed.chemistry.tds : null,
-      measuredConductivityUsCm: feed.chemistry.conductivity > 0 ? feed.chemistry.conductivity : null,
-      temperatureC: feed.chemistry.temperature,
+      measuredConductivityUsCm:
+        feed.chemistry.conductivity > 0 ? feed.chemistry.conductivity : null,
+      temperatureC: feed.chemistry.designTemperature,
       pH: finalPh,
     },
     hydraulics: {
@@ -211,11 +237,12 @@ export function buildSimulationContext(): SimulationContext | null {
   return context;
 }
 
-export function runSimulationFromStores(context: SimulationContext): SimulationResult {
+export function runSimulationFromStores(
+  context: SimulationContext,
+): SimulationResult {
   const result = runSimulation(context);
   if (result.success && result.output) {
     result.output.adjustment = context.adjustmentResult;
   }
   return result;
 }
-

@@ -33,11 +33,10 @@ export function fmtPressure(v: unknown, fallback = '—'): string {
   return r === null ? fallback : r.toFixed(1);
 }
 
-/** TDS — integer, mg/L */
+/** TDS — 3 decimal places, mg/L */
 export function fmtTDS(v: unknown, fallback = '—'): string {
-  const n = Number(v);
-  if (!isFinite(n)) return fallback;
-  return Math.round(n).toLocaleString('en-US');
+  const r = safeRound(v, 3);
+  return r === null ? fallback : r.toFixed(3);
 }
 
 /** Flux — 1 decimal, LMH */
@@ -58,10 +57,10 @@ export function fmtCP(v: unknown, fallback = '—'): string {
   return r === null ? fallback : r.toFixed(3);
 }
 
-/** Conductivity — 0 decimals, µS/cm */
+/** Conductivity — 3 decimal places, µS/cm */
 export function fmtConductivity(v: unknown, fallback = '—'): string {
-  const r = safeRound(v, 0);
-  return r === null ? fallback : Math.round(Number(r)).toLocaleString('en-US');
+  const r = safeRound(v, 3);
+  return r === null ? fallback : r.toFixed(3);
 }
 
 /** Osmotic pressure — 2 decimals, bar */
@@ -76,10 +75,10 @@ export function fmtConc(v: unknown, fallback = '—'): string {
   return r === null ? fallback : r.toFixed(3);
 }
 
-/** meq/L — 4 decimals */
+/** meq/L — 3 decimals */
 export function fmtMeq(v: unknown, fallback = '—'): string {
-  const r = safeRound(v, 4);
-  return r === null ? fallback : r.toFixed(4);
+  const r = safeRound(v, 3);
+  return r === null ? fallback : r.toFixed(3);
 }
 
 /** Charge balance difference — 6 decimal places, meq/L (Standard format) */

@@ -107,7 +107,7 @@ export function SystemDesignView() {
               </div>
             </div>
             <div className='hidden sm:block opacity-40'>
-              SOL9X - RO ENGINEERING STUDIO - v2026.05
+              SOL9X - RO ENGINEERING STUDIO
             </div>
           </div>
         </div>

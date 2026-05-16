@@ -86,9 +86,17 @@ function roundedPath(points: [number, number][], r: number = 8): string {
   return d;
 }
 
-const FlowPath = ({ pts, color, markerEnd }: { pts: [number, number][], color: string, markerEnd?: string }) => {
+const FLOW_ANIM: Record<string, string> = {
+  '#0d9488': 'pfd-flow-feed',
+  '#2563eb': 'pfd-flow-perm',
+  '#d97706': 'pfd-flow-inter',
+  '#be123c': 'pfd-flow-rej',
+};
+
+const FlowPath = ({ pts, color, markerEnd, noAnim }: { pts: [number, number][], color: string, markerEnd?: string, noAnim?: boolean }) => {
   const d = roundedPath(pts, 8);
-  return <path d={d} fill='none' stroke={color} strokeWidth='2.5' strokeLinejoin='round' markerEnd={markerEnd} />;
+  const cls = noAnim ? undefined : FLOW_ANIM[color];
+  return <path d={d} fill='none' stroke={color} strokeWidth='2.5' strokeLinejoin='round' markerEnd={markerEnd} className={cls} />;
 };
 
 const Marker = ({ id, color }: { id: string; color: string }) => (
@@ -241,6 +249,13 @@ export function ProcessFlowDiagram({
               <div style={{ width: svgW, height: SVG_H }} className='relative mx-auto mt-8 mb-12'>
                 <svg viewBox={`0 0 ${svgW} ${SVG_H}`} className='w-full h-full overflow-visible'>
                   <defs>
+                    <style>{`
+                      .pfd-flow-feed  { stroke-dasharray: 9 5; animation: pfd-flow 3s linear infinite; }
+                      .pfd-flow-perm  { stroke-dasharray: 7 5; animation: pfd-flow 4.5s linear infinite; }
+                      .pfd-flow-inter { stroke-dasharray: 7 4; animation: pfd-flow 2.8s linear infinite; }
+                      .pfd-flow-rej   { stroke-dasharray: 9 5; animation: pfd-flow 3.5s linear infinite; }
+                      @keyframes pfd-flow { from { stroke-dashoffset: 28; } to { stroke-dashoffset: 0; } }
+                    `}</style>
                     <linearGradient id="vessel-grad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#f8fafc" />
                       <stop offset="30%" stopColor="#ffffff" />
@@ -273,11 +288,11 @@ export function ProcessFlowDiagram({
                     <rect width='170' height='140' fill='rgba(255,255,255,0.95)' stroke='#64748b' strokeWidth='1.5' rx='6' />
                     <text x='85' y='18' textAnchor='middle' fontSize='10' fontWeight='800' fill='#0f172a'>DIAGRAM KEY</text>
                     <line x1='12' y1='26' x2='158' y2='26' stroke='#cbd5e1' strokeWidth='1' />
-                    <FlowPath pts={[[16, 42], [36, 42]]} color={C.feed} markerEnd='url(#arr-feed)' />
+                    <FlowPath pts={[[16, 42], [36, 42]]} color={C.feed} markerEnd='url(#arr-feed)' noAnim />
                     <text x='48' y='45' fontSize='9' fontWeight='600' fill='#0f172a'>Treated Feed Water</text>
-                    <FlowPath pts={[[16, 64], [36, 64]]} color={C.permeate} markerEnd='url(#arr-perm)' />
+                    <FlowPath pts={[[16, 64], [36, 64]]} color={C.permeate} markerEnd='url(#arr-perm)' noAnim />
                     <text x='48' y='67' fontSize='9' fontWeight='600' fill='#0f172a'>Permeate Product</text>
-                    <FlowPath pts={[[16, 86], [36, 86]]} color={C.reject} markerEnd='url(#arr-rej)' />
+                    <FlowPath pts={[[16, 86], [36, 86]]} color={C.reject} markerEnd='url(#arr-rej)' noAnim />
                     <text x='48' y='89' fontSize='9' fontWeight='600' fill='#0f172a'>System Reject</text>
                     <Gauge x={26} y={130} />
                     <text x='48' y='109' fontSize='9' fontWeight='600' fill='#0f172a'>Pressure Gauge</text>
@@ -399,7 +414,7 @@ export function ProcessFlowDiagram({
                               <g>
                                 <FlowPath pts={[[first_cx, PERIM_Y], [productX, PERIM_Y]]} color={C.permeate} markerEnd='url(#arr-perm)' />
                                 <InlineBadge x={(first_cx + productX)/2} y={PERIM_Y} label={labelPerm} color={C.permeate} tooltip={`Final Permeate Stream`} />
-                                <DataBadge x={productX + 60} y={PERIM_Y - 26} title='Product Water Output' val1={`${permeateFlow.toFixed(1)} m³/h`} val2={`${permeateTDS.toFixed(0)} ppm`} color={C.permeate} tooltip='Final High Quality Permeate' />
+                                <DataBadge x={productX + 60} y={PERIM_Y - 26} title='Product Water Output' val1={`${permeateFlow.toFixed(1)} m³/h`} val2={`${permeateTDS.toFixed(0)} ppm TDS`} color={C.permeate} tooltip='Final High Quality Permeate' />
                                 <Sensor x={productX + 60} y={PERIM_Y} label='TDS' tooltip={`Conductivity Sensor\n${permeateTDS.toFixed(0)} ppm`} />
                               </g>
                             );

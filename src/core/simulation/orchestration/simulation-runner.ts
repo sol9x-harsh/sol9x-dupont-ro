@@ -20,6 +20,7 @@ import {
   classifyWaterType,
 } from '@/core/constants/membrane';
 import type { MembraneDefaults } from '@/core/constants/membrane';
+import { correctPermeabilityForTemperature } from '@/core/hydraulics/temperature/tcf';
 import type {
   SimulationContext,
   StageGeometryContext,
@@ -195,6 +196,7 @@ export function buildSimulationContext(): SimulationContext | null {
   // falling back to TDS-based auto-classification.
   const modelName = extractMembraneModelName(roConfig.passes);
   const membrane = resolveMembraneProperties(modelName, effectiveTDS);
+  const waterType = classifyWaterType(effectiveTDS);
 
   const stageRecoveryFractions = buildStageRecoveryFractions(roConfig.passes);
   const stageGeometries = buildStageGeometries(
@@ -256,7 +258,13 @@ export function buildSimulationContext(): SimulationContext | null {
     },
     membrane: {
       rejectionPercent: membrane.nominalRejection * 100,
-      permeabilityA: membrane.permeabilityA,
+      // Correct membrane permeability A from 25°C datasheet reference to
+      // actual operating temperature using the Arrhenius TCF model.
+      permeabilityA: correctPermeabilityForTemperature(
+        membrane.permeabilityA,
+        temperatureC,
+        waterType,
+      ),
       massTransferCoefficientMS: SIMULATION_DEFAULTS.massTransferCoefficientMS,
     },
     configuration: {

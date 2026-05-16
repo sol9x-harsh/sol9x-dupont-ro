@@ -352,12 +352,6 @@ export function StudioShell({
             <div className='flex items-center gap-6'>
               {/* Save status */}
               <div className='hidden md:flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest min-w-30 justify-end'>
-                {saveStatus === 'saving' && (
-                  <>
-                    <Loader2 className='w-3 h-3 animate-spin text-slate-400 shrink-0' />
-                    <span className='text-slate-400'>Saving…</span>
-                  </>
-                )}
                 {saveStatus === 'unsaved' && (
                   <>
                     <span className='w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0' />
@@ -370,7 +364,7 @@ export function StudioShell({
                     <span className='text-red-500'>Save failed</span>
                   </>
                 )}
-                {saveStatus === 'saved' && savedAt && (
+                {(saveStatus === 'saved' || saveStatus === 'saving') && savedAt && (
                   <span className='text-slate-400'>Saved {savedAt}</span>
                 )}
               </div>

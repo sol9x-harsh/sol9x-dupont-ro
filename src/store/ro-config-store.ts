@@ -38,6 +38,10 @@ export interface ChemicalAdjustment {
   dechlorinatorOn: boolean;
   dechlorinatorChemical: string;
   dechlorinatorDose: number;
+  /** Feed TOC concentration entering the RO system (mg/L). */
+  tocFeedMgL: number;
+  /** Membrane TOC rejection applied for permeate quality estimation (%). */
+  tocRejectionPercent: number;
 }
 
 export interface ConcentrateRecycle {
@@ -92,6 +96,8 @@ const defaultChemicalAdjustment: ChemicalAdjustment = {
   dechlorinatorOn: false,
   dechlorinatorChemical: 'NaHSO3',
   dechlorinatorDose: 1.0,
+  tocFeedMgL: 1.8,
+  tocRejectionPercent: 96.0,
 };
 
 const defaultState = {

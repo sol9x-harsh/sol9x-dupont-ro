@@ -43,8 +43,10 @@ export async function generateEngineeringPDF(
       pfdImage: options.pfdImage,
     });
 
-    // Render to Blob
-    const blob = await pdf(element).toBlob();
+    // Render to Blob — cast needed: createElement returns a generic ReactElement
+    // but pdf() expects ReactElement<DocumentProps>; the root component is a Document
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const blob = await pdf(element as any).toBlob();
 
     // Determine filename
     const safeProjectName = report.metadata.projectName

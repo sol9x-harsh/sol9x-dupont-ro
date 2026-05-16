@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, Fragment, useEffect, useCallback } from 'react';
+import { useState, Fragment, useEffect, useCallback, useMemo } from 'react';
+import { simulateChemicalAdjustment } from '@/core/chemistry/adjustment/chemical-adjustment';
 import { useSimulationStore } from '@/store/simulation-store';
 import {
   selectAverageFlux,
@@ -177,10 +178,23 @@ export function ROConfigView() {
   const setActiveTempView = useFeedStore((s) => s.setActiveTemperatureView);
   const updateFeedField = useFeedStore((s) => s.updateChemistryField);
 
-  const systemTemperature = useFeedStore((s) => 
-    activeTempView === 'min' ? s.chemistry.minTemperature :
-    activeTempView === 'max' ? s.chemistry.maxTemperature :
-    s.chemistry.designTemperature
+  // Live feed chemistry — subscribed directly so the chem adj table always reflects real data.
+  const feedIons          = useFeedStore((s) => s.chemistry.ions);
+  const feedPh            = useFeedStore((s) => s.chemistry.ph);
+  const feedMinTemp       = useFeedStore((s) => s.chemistry.minTemperature);
+  const feedDesignTemp    = useFeedStore((s) => s.chemistry.designTemperature);
+  const feedMaxTemp       = useFeedStore((s) => s.chemistry.maxTemperature);
+
+  const systemTemperature =
+    activeTempView === 'min' ? feedMinTemp :
+    activeTempView === 'max' ? feedMaxTemp :
+    feedDesignTemp;
+
+  // Always-live adjustment result — derived from the actual feed store, not the simulation output.
+  // This means the chemistry table is correct even before the main simulation has run.
+  const liveAdjustmentResult = useMemo(() =>
+    simulateChemicalAdjustment(feedIons, feedPh, systemTemperature, chemicalAdjustment),
+    [feedIons, feedPh, systemTemperature, chemicalAdjustment],
   );
 
   const displayRecovery = liveRecovery ?? storeRecovery;
@@ -277,70 +291,72 @@ export function ROConfigView() {
     setPassData({ ...passData, [activePass]: activeStages.slice(0, -1) });
   };
 
+  // Concentration factor from simulation output for concentrate column scaling.
+  // Falls back to 1 (no concentration) if the main simulation hasn't run yet.
   const cf = simOutput?.summary?.feedTDSMgL
     ? simOutput.summary.concentrateTDSMgL / simOutput.summary.feedTDSMgL
     : 1;
-  const tableData = adjustmentResult
-    ? [
-        {
-          label: 'pH',
-          b: adjustmentResult.beforeAdjustment.ph.toFixed(2),
-          a: adjustmentResult.afterDegas.ph.toFixed(2),
-          r: (adjustmentResult.final.ph + 0.1).toFixed(2), // slightly elevated in concentrate due to equilibrium
-        },
-        {
-          label: 'LSI*',
-          b: adjustmentResult.beforeAdjustment.lsi.toFixed(2),
-          a: adjustmentResult.afterDegas.lsi.toFixed(2),
-          r: (adjustmentResult.final.lsi + Math.log10(cf)).toFixed(2),
-        },
-        {
-          label: 'Stiff & Davis Index*',
-          b: adjustmentResult.beforeAdjustment.sdi.toFixed(2),
-          a: adjustmentResult.afterDegas.sdi.toFixed(2),
-          r: (adjustmentResult.final.sdi + Math.log10(cf)).toFixed(2),
-        },
-        {
-          label: 'TD Solutes (mg/L)',
-          b: adjustmentResult.beforeAdjustment.tds.toFixed(2),
-          a: adjustmentResult.afterDegas.tds.toFixed(2),
-          r: (adjustmentResult.final.tds * cf).toFixed(2),
-        },
-        {
-          label: 'Ionic Strength (molal)',
-          b: adjustmentResult.beforeAdjustment.ionicStrength.toFixed(3),
-          a: adjustmentResult.afterDegas.ionicStrength.toFixed(3),
-          r: (adjustmentResult.final.ionicStrength * cf).toFixed(3),
-        },
-        {
-          label: 'HCO₃⁻ (mg/L)',
-          b: adjustmentResult.beforeAdjustment.ions.bicarbonate.toFixed(2),
-          a: adjustmentResult.afterDegas.ions.bicarbonate.toFixed(2),
-          r: (adjustmentResult.final.ions.bicarbonate * cf).toFixed(2),
-        },
-        {
-          label: 'CO₂ (mg/L)',
-          b: adjustmentResult.beforeAdjustment.ions.co2.toFixed(2),
-          a: adjustmentResult.afterDegas.ions.co2.toFixed(2),
-          r: adjustmentResult.final.ions.co2.toFixed(2),
-        },
-        {
-          label: 'CO₃²⁻ (mg/L)',
-          b: adjustmentResult.beforeAdjustment.ions.carbonate.toFixed(2),
-          a: adjustmentResult.afterDegas.ions.carbonate.toFixed(2),
-          r: (adjustmentResult.final.ions.carbonate * cf).toFixed(2),
-        },
-      ]
-    : [
-        { label: 'pH', b: '7.20', a: '11.15', r: '7.15' },
-        { label: 'LSI*', b: '-1.38', a: '0.88', r: '-0.29' },
-        { label: 'Stiff & Davis Index*', b: '-0.24', a: '1.97', r: '0.36' },
-        { label: 'TD Solutes (mg/L)', b: '151.57', a: '94.84', r: '606.26' },
-        { label: 'Ionic Strength (molal)', b: '0.00', a: '0.00', r: '0.01' },
-        { label: 'HCO₃⁻ (mg/L)', b: '80.12', a: '1.56', r: '320.40' },
-        { label: 'CO₂ (mg/L)', b: '8.56', a: '0.00', r: '34.28' },
-        { label: 'CO₃²⁻ (mg/L)', b: '0.07', a: '12.11', r: '0.33' },
-      ];
+
+  // Always built from liveAdjustmentResult (derived from feed store) — never fake fallback data.
+  const adj = liveAdjustmentResult;
+  const tableData = [
+    {
+      label: 'pH',
+      b:  adj.beforeAdjustment.ph.toFixed(2),
+      ac: adj.afterAcid.ph.toFixed(2),
+      a:  adj.afterDegas.ph.toFixed(2),
+      r:  adj.final.ph.toFixed(2),
+    },
+    {
+      label: 'LSI*',
+      b:  adj.beforeAdjustment.lsi.toFixed(2),
+      ac: adj.afterAcid.lsi.toFixed(2),
+      a:  adj.afterDegas.lsi.toFixed(2),
+      r:  (adj.final.lsi + Math.log10(Math.max(cf, 1))).toFixed(2),
+    },
+    {
+      label: 'S&DSI*',
+      b:  adj.beforeAdjustment.sdi.toFixed(2),
+      ac: adj.afterAcid.sdi.toFixed(2),
+      a:  adj.afterDegas.sdi.toFixed(2),
+      r:  (adj.final.sdi + Math.log10(Math.max(cf, 1))).toFixed(2),
+    },
+    {
+      label: 'TDS (mg/L)',
+      b:  adj.beforeAdjustment.tds.toFixed(1),
+      ac: adj.afterAcid.tds.toFixed(1),
+      a:  adj.afterDegas.tds.toFixed(1),
+      r:  (adj.final.tds * cf).toFixed(1),
+    },
+    {
+      label: 'Ionic Str. (mol/L)',
+      b:  adj.beforeAdjustment.ionicStrength.toFixed(4),
+      ac: adj.afterAcid.ionicStrength.toFixed(4),
+      a:  adj.afterDegas.ionicStrength.toFixed(4),
+      r:  (adj.final.ionicStrength * cf).toFixed(4),
+    },
+    {
+      label: 'HCO₃⁻ (mg/L)',
+      b:  adj.beforeAdjustment.ions.bicarbonate.toFixed(2),
+      ac: adj.afterAcid.ions.bicarbonate.toFixed(2),
+      a:  adj.afterDegas.ions.bicarbonate.toFixed(2),
+      r:  (adj.final.ions.bicarbonate * cf).toFixed(2),
+    },
+    {
+      label: 'CO₂ (mg/L)',
+      b:  adj.beforeAdjustment.ions.co2.toFixed(2),
+      ac: adj.afterAcid.ions.co2.toFixed(2),
+      a:  adj.afterDegas.ions.co2.toFixed(2),
+      r:  adj.final.ions.co2.toFixed(2),
+    },
+    {
+      label: 'CO₃²⁻ (mg/L)',
+      b:  adj.beforeAdjustment.ions.carbonate.toFixed(2),
+      ac: adj.afterAcid.ions.carbonate.toFixed(2),
+      a:  adj.afterDegas.ions.carbonate.toFixed(2),
+      r:  (adj.final.ions.carbonate * cf).toFixed(2),
+    },
+  ];
 
   return (
     <div className='px-6 py-4 lg:px-8 lg:py-6 space-y-6 max-w-[1700px] mx-auto font-sans'>
@@ -1431,49 +1447,63 @@ export function ROConfigView() {
             <div className='grid grid-cols-1 lg:grid-cols-4 gap-6 pt-2'>
               {/* Table */}
               <div className='lg:col-span-3 border border-border rounded-xl overflow-x-auto shadow-sm'>
-                <table className='w-full text-xs text-left min-w-[500px]'>
+                <table className='w-full text-xs text-left min-w-[560px]'>
                   <thead>
                     <tr className='bg-slate-100/80 text-slate-700 font-bold border-b border-border'>
-                      <th className='py-3 px-4 w-[30%]'>Measurement</th>
-                      <th className='py-3 px-4'>Before Adjustment</th>
+                      <th className='py-3 px-4 w-[28%]'>Measurement</th>
+                      <th className='py-3 px-4'>Feed (Raw)</th>
+                      {phDownOn && (
+                        <th className='py-3 px-4 text-amber-600'>After Acid</th>
+                      )}
                       {degasOn && (
                         <th className='py-3 px-4 text-primary'>After Degas</th>
                       )}
-                      <th className='py-3 px-4'>RO Pass1 Concentrate</th>
+                      {phUpOn && (
+                        <th className='py-3 px-4 text-emerald-600'>After Base</th>
+                      )}
+                      <th className='py-3 px-4 text-slate-500'>Concentrate</th>
                     </tr>
                   </thead>
                   <tbody className='divide-y divide-border bg-white font-medium text-slate-600'>
-                    {tableData.map((row, i) => (
-                      <tr
-                        key={i}
-                        className='hover:bg-slate-50/80 transition-colors'
-                      >
-                        <td className='py-2.5 px-4'>{row.label}</td>
-                        <td className='py-2.5 px-4 font-mono'>{row.b}</td>
-                        {degasOn && (
-                          <td
-                            className={cn(
+                    {tableData.map((row, i) => {
+                      const isScalingRow = row.label.includes('*');
+                      return (
+                        <tr key={i} className='hover:bg-slate-50/80 transition-colors'>
+                          <td className='py-2.5 px-4'>{row.label}</td>
+                          <td className='py-2.5 px-4 font-mono'>{row.b}</td>
+                          {phDownOn && (
+                            <td className={cn(
                               'py-2.5 px-4 font-mono font-semibold',
-                              parseFloat(row.a) > 0 && row.label.includes('*')
-                                ? 'text-destructive'
-                                : 'text-primary',
-                            )}
-                          >
-                            {row.a}
-                          </td>
-                        )}
-                        <td
-                          className={cn(
-                            'py-2.5 px-4 font-mono',
-                            parseFloat(row.r) > 0 && row.label.includes('*')
-                              ? 'text-destructive font-bold'
-                              : '',
+                              isScalingRow && parseFloat(row.ac) > 0 ? 'text-destructive' : 'text-amber-600',
+                            )}>
+                              {row.ac}
+                            </td>
                           )}
-                        >
-                          {row.r}
-                        </td>
-                      </tr>
-                    ))}
+                          {degasOn && (
+                            <td className={cn(
+                              'py-2.5 px-4 font-mono font-semibold',
+                              isScalingRow && parseFloat(row.a) > 0 ? 'text-destructive' : 'text-primary',
+                            )}>
+                              {row.a}
+                            </td>
+                          )}
+                          {phUpOn && (
+                            <td className={cn(
+                              'py-2.5 px-4 font-mono font-semibold',
+                              isScalingRow && parseFloat(row.r) > 0 ? 'text-destructive' : 'text-emerald-600',
+                            )}>
+                              {row.r}
+                            </td>
+                          )}
+                          <td className={cn(
+                            'py-2.5 px-4 font-mono',
+                            isScalingRow && parseFloat(row.r) > 0 ? 'text-destructive font-bold' : '',
+                          )}>
+                            {row.r}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1482,26 +1512,34 @@ export function ROConfigView() {
               <div className='lg:col-span-1 space-y-4'>
                 <div className='border border-border rounded-xl p-4 shadow-sm bg-white'>
                   <h4 className='text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3'>
-                    Temperature
+                    Temperature Case
                   </h4>
-                  <Select defaultValue='Design'>
-                    <SelectTrigger className='h-8 text-xs bg-slate-50 mb-3'>
+                  <Select
+                    value={activeTempView}
+                    onValueChange={(val) => setActiveTempView(val as 'min' | 'design' | 'max')}
+                  >
+                    <SelectTrigger className='h-8 text-xs bg-slate-50 mb-3 border-primary/30'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value='Design'>Design</SelectItem>
+                      <SelectItem value='min'>Min — {feedMinTemp.toFixed(1)} °C</SelectItem>
+                      <SelectItem value='design'>Design — {feedDesignTemp.toFixed(1)} °C</SelectItem>
+                      <SelectItem value='max'>Max — {feedMaxTemp.toFixed(1)} °C</SelectItem>
                     </SelectContent>
                   </Select>
                   <div className='flex items-center bg-muted/30 border border-transparent rounded-md h-8 overflow-hidden'>
                     <Input
                       readOnly
                       value={systemTemperature.toFixed(1)}
-                      className='flex-1 h-full border-0 bg-transparent rounded-none px-2 text-xs font-mono text-slate-500 focus-visible:ring-0'
+                      className='flex-1 h-full border-0 bg-transparent rounded-none px-2 text-xs font-mono text-slate-700 font-semibold focus-visible:ring-0'
                     />
                     <div className='px-3 h-full flex items-center justify-center bg-white border-l border-border text-[10px] font-bold text-slate-400'>
                       °C
                     </div>
                   </div>
+                  <p className='text-[10px] text-muted-foreground mt-2'>
+                    Affects pKa, osmotic pressure &amp; TCF. Set temperatures in Feed Setup.
+                  </p>
                 </div>
 
                 <div className='border border-border rounded-xl p-4 shadow-sm bg-white'>
@@ -1563,20 +1601,34 @@ export function ROConfigView() {
             </SelectContent>
           </Select>
           <div className='flex items-center border border-border rounded-md bg-muted/20 overflow-hidden'>
-            <Input
-              value={systemTemperature.toFixed(1)}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (!isNaN(val) && val >= 0 && val <= 80) {
-                  if (activeTempView === 'min') {
-                    updateFeedField('minTemperature', val);
-                  } else if (activeTempView === 'max') {
-                    updateFeedField('maxTemperature', val);
-                  } else {
-                    updateFeedField('designTemperature', val);
-                  }
+            <NumericInput
+              value={systemTemperature}
+              onChange={(val) => {
+                const { minTemperature, maxTemperature, designTemperature } =
+                  useFeedStore.getState().chemistry;
+                if (activeTempView === 'min') {
+                  // min must not exceed design or max
+                  updateFeedField(
+                    'minTemperature',
+                    Math.max(0, Math.min(val, designTemperature, maxTemperature)),
+                  );
+                } else if (activeTempView === 'max') {
+                  // max must not go below design or min
+                  updateFeedField(
+                    'maxTemperature',
+                    Math.min(80, Math.max(val, designTemperature, minTemperature)),
+                  );
+                } else {
+                  // design must stay between min and max
+                  updateFeedField(
+                    'designTemperature',
+                    Math.min(maxTemperature, Math.max(minTemperature, Math.min(80, Math.max(0, val)))),
+                  );
                 }
               }}
+              precision={1}
+              min={0}
+              max={80}
               className='h-8 w-14 text-xs border-0 focus-visible:ring-0 rounded-none bg-transparent px-2 font-mono'
             />
             <div className='px-2 h-8 flex items-center bg-muted/40 text-xs text-muted-foreground border-l border-border'>
@@ -1620,7 +1672,7 @@ export function ROConfigView() {
               recovery={displayRecovery}
               pumpPressure={displayFeedPressure}
               feedTDS={displayFeedTDS}
-              permeateTDS={livePermeateTDS ?? projectData.permeateTDS}
+              permeateTDS={livePermeateTDS ?? (liveRejection !== null ? displayFeedTDS * (1 - liveRejection / 100) : displayFeedTDS * 0.003)}
               rejectTDS={projectData.rejectTDS}
               passes={passes.map(
                 (passId, passIdx): PassConfig => ({

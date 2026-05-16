@@ -112,6 +112,7 @@ interface PdfPageTemplateProps {
   children: React.ReactNode;
   projectName?: string;
   generatedAt?: string;
+  orientation?: 'portrait';
 }
 
 export function PdfPageTemplate({

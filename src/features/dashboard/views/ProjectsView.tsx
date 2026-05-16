@@ -21,7 +21,6 @@ import {
   MoreHorizontal,
   Clock,
   LogOut,
-  Bell,
   LayoutGrid,
   List,
   FolderPlus,
@@ -32,7 +31,7 @@ import {
 } from 'lucide-react';
 import type { ViewMode } from '@/types/project.types';
 import { CreateProjectModal } from '@/features/dashboard/modals/CreateProjectModal';
-import { STATUS, TABS } from '@/features/dashboard/constants';
+import { STATUS } from '@/features/dashboard/constants';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,7 +78,6 @@ export default function ProjectsView() {
   const [openCreate, setOpenCreate] = useState(false);
   const [openFolder, setOpenFolder] = useState(false);
   const [folderName, setFolderName] = useState('');
-  const [activeTab, setActiveTab] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [search, setSearch] = useState('');
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
@@ -252,10 +250,6 @@ export default function ProjectsView() {
       : activeFolder
         ? p.folder === activeFolder
         : true;
-    if (activeTab === 1)
-      return matchesSearch && matchesFolder && p.status === 'Verified';
-    if (activeTab === 2)
-      return matchesSearch && matchesFolder && p.status === 'Draft';
     return matchesSearch && matchesFolder;
   });
 
@@ -428,10 +422,6 @@ export default function ProjectsView() {
         </div>
 
         <div className='ml-auto flex items-center gap-2.5'>
-          <button className='relative w-8 h-8 rounded-lg border border-border/60 bg-card flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all'>
-            <Bell className='w-4 h-4' />
-            <span className='absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[hsl(215,55%,45%)] border-2 border-card' />
-          </button>
           <div
             className='w-8 h-8 rounded-lg border border-border/60 flex items-center justify-center text-[11px] font-bold text-foreground cursor-pointer hover:ring-2 hover:ring-[hsl(215,55%,35%)]/20 transition-all'
             style={{
@@ -459,7 +449,7 @@ export default function ProjectsView() {
 
       <div className='max-w-[1440px] mx-auto px-6 lg:px-8 py-8'>
         {/* ── Page Header ── */}
-        <div className='flex items-start justify-between gap-6 mb-8'>
+        <div className='flex items-start justify-between gap-6 mb-5'>
           <div>
             {/* Breadcrumb */}
             <div className='flex items-center gap-2 mb-2 flex-wrap'>
@@ -536,6 +526,15 @@ export default function ProjectsView() {
           </div>
 
           <div className='flex items-center gap-2.5 shrink-0'>
+            <div className='relative'>
+              <Search className='w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60' />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder='Search projects...'
+                className='pl-9 h-9 w-[220px] text-[13px] bg-card border-border/60 rounded-xl'
+              />
+            </div>
             <Button
               variant='outline'
               onClick={() => setOpenFolder(true)}
@@ -557,15 +556,70 @@ export default function ProjectsView() {
               <Plus className='w-4 h-4' />
               New Project
             </Button>
+            <div className='w-px h-5 bg-border/60' />
+            <div className='flex items-center gap-0.5 bg-muted/60 rounded-lg p-0.5 border border-border/40'>
+              {(
+                [
+                  ['grid', LayoutGrid],
+                  ['list', List],
+                ] as const
+              ).map(([mode, Icon]) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
+                    viewMode === mode
+                      ? 'bg-card shadow-sm text-foreground ring-1 ring-border/50'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon className='w-3.5 h-3.5' />
+                </button>
+              ))}
+            </div>
           </div>
+        </div>
+
+        {/* ── Stats Strip ── */}
+        <div className='flex items-center gap-3 mb-7 pb-5 border-b border-border/30'>
+          <div className='flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground'>
+            <span className='text-foreground font-semibold text-[13px]'>{projects.length}</span>
+            <span>projects</span>
+          </div>
+          <span className='w-px h-3 bg-border' />
+          <div className='flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground'>
+            <span className='text-foreground font-semibold text-[13px]'>{allFolderNames.length}</span>
+            <span>folders</span>
+          </div>
+          {currentFolder && (
+            <>
+              <span className='w-px h-3 bg-border' />
+              <div className='flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground'>
+                <FolderOpen className='w-3 h-3' />
+                <span className='text-[hsl(215,55%,38%)] font-semibold'>{currentFolder}</span>
+              </div>
+            </>
+          )}
+          {search && filtered.length > 0 && (
+            <>
+              <span className='w-px h-3 bg-border' />
+              <span className='text-[11px] font-mono text-muted-foreground'>
+                {filtered.length} result{filtered.length !== 1 ? 's' : ''} for &ldquo;{search}&rdquo;
+              </span>
+            </>
+          )}
         </div>
 
         {/* ── Folders Section (root only) ── */}
         {!currentFolder && (
-          <div className='mb-6'>
-            <div className='flex items-center mb-3'>
+          <div className='mb-8'>
+            <div className='flex items-center gap-2 mb-3'>
+              <Folder className='w-3.5 h-3.5 text-muted-foreground/60' />
               <span className='text-[11px] uppercase tracking-[0.15em] font-bold text-muted-foreground'>
                 Folders
+              </span>
+              <span className='ml-1 text-[10px] font-mono bg-muted/60 text-muted-foreground px-1.5 py-0.5 rounded border border-border/50'>
+                {allFolderNames.length}
               </span>
             </div>
             <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3'>
@@ -660,54 +714,18 @@ export default function ProjectsView() {
           </div>
         )}
 
-        {/* ── Toolbar ── */}
-        <div className='flex items-center gap-3 mb-5'>
-          <div className='flex items-center gap-1 bg-muted/60 rounded-xl p-1 border border-border/40'>
-            {TABS.map((t, i) => (
-              <button
-                key={t}
-                onClick={() => setActiveTab(i)}
-                className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-lg transition-all duration-200 ${
-                  activeTab === i
-                    ? 'bg-card text-foreground shadow-sm ring-1 ring-border/60'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
 
-          <div className='relative flex-1 max-w-[320px] ml-auto'>
-            <Search className='w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60' />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder='Search projects...'
-              className='pl-9 h-9 text-[13px] bg-card border-border/60 rounded-xl'
-            />
-          </div>
-
-          <div className='flex items-center gap-0.5 bg-muted/60 rounded-lg p-0.5 border border-border/40'>
-            {(
-              [
-                ['grid', LayoutGrid],
-                ['list', List],
-              ] as const
-            ).map(([mode, Icon]) => (
-              <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
-                  viewMode === mode
-                    ? 'bg-card shadow-sm text-foreground ring-1 ring-border/50'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Icon className='w-3.5 h-3.5' />
-              </button>
-            ))}
-          </div>
+        {/* ── Projects Section Heading ── */}
+        <div className='flex items-center gap-2 mb-4'>
+          <Droplets className='w-3.5 h-3.5 text-muted-foreground/60' />
+          <span className='text-[11px] uppercase tracking-[0.15em] font-bold text-muted-foreground'>
+            {currentFolder ?? 'All Projects'}
+          </span>
+          {!loadingProjects && (
+            <span className='ml-1 text-[10px] font-mono bg-muted/60 text-muted-foreground px-1.5 py-0.5 rounded border border-border/50'>
+              {filtered.length}
+            </span>
+          )}
         </div>
 
         {/* ── Project Grid ── */}

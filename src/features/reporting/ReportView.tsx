@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
+import { simulateChemicalAdjustment } from '@/core/chemistry/adjustment/chemical-adjustment';
 import { toPng } from 'html-to-image';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -221,7 +222,25 @@ export function ReportView() {
   const pfdRef = useRef<HTMLDivElement>(null);
   const { chemistry, activeTemperatureView, setActiveTemperatureView, updateChemistryField } = useFeedStore();
   const [customTemp, setCustomTemp] = useState<string>(chemistry.designTemperature.toString());
-  
+  const chemAdj = useROConfigStore((s) => s.chemicalAdjustment);
+
+  // Live temperature resolved from the active view — same logic as ROConfigView.
+  const liveTemp =
+    activeTemperatureView === 'min' ? chemistry.minTemperature :
+    activeTemperatureView === 'max' ? chemistry.maxTemperature :
+    chemistry.designTemperature;
+
+  const tempLabel =
+    activeTemperatureView === 'min'    ? `Min — ${chemistry.minTemperature.toFixed(1)} °C` :
+    activeTemperatureView === 'max'    ? `Max — ${chemistry.maxTemperature.toFixed(1)} °C` :
+                                         `Design — ${chemistry.designTemperature.toFixed(1)} °C`;
+
+  // Always-live adjustment result — mirrors what the RO Config modal shows.
+  const liveAdjustmentResult = useMemo(() =>
+    simulateChemicalAdjustment(chemistry.ions, chemistry.ph, liveTemp, chemAdj),
+    [chemistry.ions, chemistry.ph, liveTemp, chemAdj],
+  );
+
   const report = useEngineeringReport();
   const warningSummary = useWarningSummaryReport();
   
@@ -652,6 +671,11 @@ export function ReportView() {
           soluteData={soluteData}
           scalingData={scalingData}
           warnings={metadata.designWarnings}
+          adjustmentResult={liveAdjustmentResult}
+          cf={hasSimulation ? (report.systemOverview.concentrateTDSMgL / Math.max(report.systemOverview.feedTDSMgL, 1)) : 1}
+          temperatureC={liveTemp}
+          temperatureLabel={tempLabel}
+          chemAdj={chemAdj}
         />
       </section>
 

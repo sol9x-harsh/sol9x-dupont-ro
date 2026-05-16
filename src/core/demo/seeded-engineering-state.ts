@@ -46,7 +46,9 @@ export const SEEDED_FEED_CHEMISTRY: FeedChemistry = {
   sdi: 2.5,
   turbidity: 0.08,
   ph: 8.1,
-  temperature: 28,
+  designTemperature: 28,
+  minTemperature: 20,
+  maxTemperature: 35,
 };
 
 // ─── Project ──────────────────────────────────────────────────────────────────

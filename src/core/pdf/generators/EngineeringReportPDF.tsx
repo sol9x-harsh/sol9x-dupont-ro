@@ -16,11 +16,13 @@ export type ReportSectionId = 'overview' | 'flow' | 'chemical' | 'economic' | 'p
 export interface EngineeringReportPDFProps {
   report: FullEngineeringReport;
   selectedSections: string[];
+  pfdImage?: string;
 }
 
 export function EngineeringReportPDF({
   report,
   selectedSections,
+  pfdImage,
 }: EngineeringReportPDFProps) {
   const has = (id: ReportSectionId) => selectedSections.includes(id);
 
@@ -70,7 +72,11 @@ export function EngineeringReportPDF({
 
       {/* Section VI: Process Flow Diagram */}
       {has('pfd') && (
-        <PdfSystemDiagram report={report} generatedAt={generatedAt} />
+        <PdfSystemDiagram 
+          report={report} 
+          generatedAt={generatedAt} 
+          pfdImage={pfdImage}
+        />
       )}
     </Document>
   );

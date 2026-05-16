@@ -11,6 +11,7 @@ interface Props {
   feedFlow?: number; permeateFlow?: number; rejectFlow?: number;
   recovery?: number; pumpPressure?: number;
   feedTDS?: number; permeateTDS?: number; rejectTDS?: number;
+  bypassFlow?: number;
   stages?: StageConfig[]; boosterPressures?: number[][];
   stage1?: StageConfig; stage2?: StageConfig; stage3?: StageConfig;
 }
@@ -196,6 +197,7 @@ export function ProcessFlowDiagram({
   feedFlow = 0, permeateFlow = 0, rejectFlow = 0,
   recovery = 75, pumpPressure = 14.2,
   feedTDS = 0, permeateTDS = 0, rejectTDS = 0,
+  bypassFlow = 0,
   stage1, stage2, stage3,
   stages: propStages,
   boosterPressures
@@ -299,6 +301,14 @@ export function ProcessFlowDiagram({
                   <FlowPath pts={[[10, FLOW_Y], [passStarts[0] - 30, FLOW_Y]]} color={C.feed} />
                   <DataBadge x={70} y={FLOW_Y - 26} title='Raw Water Feed' val1={`${feedFlow.toFixed(1)} m³/h`} val2={`${feedTDS.toFixed(0)} ppm`} color={C.feed} tooltip='Primary Inlet Feed' />
                   
+                  {/* ── BYPASS PATH ── */}
+                  {bypassFlow > 0 && (
+                    <g>
+                      <FlowPath pts={[[40, FLOW_Y], [40, 430], [totalW - 120, 430], [totalW - 120, PERIM_Y]]} color={C.feed} markerEnd='url(#arr-feed)' />
+                      <InlineBadge x={(40 + totalW - 120) / 2} y={430} label='BYPASS' color={C.feed} tooltip={`Bypass Stream: ${bypassFlow.toFixed(1)} m³/h`} />
+                    </g>
+                  )}
+
                   {/* ── PASS LOOP ── */}
                   {passes.map((pass, passIdx) => {
                     const isFirstPass = passIdx === 0;

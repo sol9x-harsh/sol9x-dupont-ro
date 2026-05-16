@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { toPng } from 'html-to-image';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -29,7 +30,9 @@ import { ChemicalAnalysis } from '@/features/reporting/sections/ChemicalAnalysis
 import { CostBreakdown } from '@/features/reporting/sections/CostBreakdown';
 import { SystemDesignPFD } from '@/features/reporting/sections/SystemDesignPFD';
 import { ProcessFlowDiagram } from '@/components/engineering/pfd/ProcessFlowDiagram';
+import { useROConfigStore } from '@/store/ro-config-store';
 
+import { useFeedStore } from '@/store/feed-store';
 import {
   useEngineeringReport,
   useWarningSummaryReport,
@@ -215,22 +218,22 @@ function toChemicalCosts(r: FullEngineeringReport): ChemicalCostData[] {
 export function ReportView() {
   const [exportOpen, setExportOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [tempMode, setTempMode] = useState<'min' | 'design' | 'max' | 'custom'>(
-    'design',
-  );
-  const [customTemp, setCustomTemp] = useState<string>('25');
-
+  const pfdRef = useRef<HTMLDivElement>(null);
+  const { chemistry, activeTemperatureView, setActiveTemperatureView, updateChemistryField } = useFeedStore();
+  const [customTemp, setCustomTemp] = useState<string>(chemistry.designTemperature.toString());
+  
   const report = useEngineeringReport();
   const warningSummary = useWarningSummaryReport();
+  
+  // Synchronize local mode with store mode
+  const tempMode = activeTemperatureView === 'design' && parseFloat(customTemp) !== chemistry.designTemperature ? 'custom' : activeTemperatureView;
 
   const currentTemp =
-    tempMode === 'custom'
-      ? parseFloat(customTemp) || 0
-      : tempMode === 'min'
-        ? 12
-        : tempMode === 'max'
-          ? 38
-          : 25;
+    activeTemperatureView === 'min'
+      ? chemistry.minTemperature
+      : activeTemperatureView === 'max'
+        ? chemistry.maxTemperature
+        : chemistry.designTemperature;
 
   // Adapt live report data or show empty state
   const hasSimulation = report !== null;
@@ -355,8 +358,18 @@ export function ReportView() {
     });
 
     try {
+      let pfdImage = '';
+      if (pfdRef.current) {
+        // Capture the PFD as a high-quality PNG
+        pfdImage = await toPng(pfdRef.current, { 
+          backgroundColor: '#ffffff',
+          pixelRatio: 2, // Higher quality
+        });
+      }
+
       await generateEngineeringPDF(report, {
         selectedSections,
+        pfdImage,
         onStatusChange: (status) => {
           if (status === 'done') {
             toast.dismiss(exportToast);
@@ -491,7 +504,13 @@ export function ReportView() {
             ].map((mode) => (
               <button
                 key={mode.id}
-                onClick={() => setTempMode(mode.id as any)}
+                onClick={() => {
+                  if (mode.id === 'custom') {
+                    setActiveTemperatureView('design');
+                  } else {
+                    setActiveTemperatureView(mode.id as any);
+                  }
+                }}
                 className={cn(
                   'px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all',
                   tempMode === mode.id
@@ -507,7 +526,14 @@ export function ReportView() {
                 <input
                   type='number'
                   value={customTemp}
-                  onChange={(e) => setCustomTemp(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomTemp(val);
+                    const num = parseFloat(val);
+                    if (!isNaN(num) && num > 0 && num < 100) {
+                      updateChemistryField('designTemperature', num);
+                    }
+                  }}
                   className='w-12 h-6 text-[10px] font-bold bg-white border border-slate-200 rounded-md px-1.5 focus:ring-1 focus:ring-primary outline-none'
                 />
                 <span className='text-[10px] font-bold text-slate-400'>°C</span>
@@ -567,7 +593,7 @@ export function ReportView() {
             <h3 className='text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4'>
               Reverse Osmosis Process Diagram
             </h3>
-            <div className='max-w-5xl mx-auto'>
+            <div className='max-w-5xl mx-auto' ref={pfdRef}>
               <ProcessFlowDiagram
                 feedFlow={overview.systemFeed}
                 permeateFlow={overview.systemPermeate}
@@ -578,6 +604,13 @@ export function ReportView() {
                 permeateTDS={passes[0]?.permeateTds ?? 0}
                 rejectTDS={
                   streams.find((s) => s.name.includes('Concentrate'))?.tds ?? 0
+                }
+                bypassFlow={
+                  useROConfigStore.getState().passOptimizationMode === 'Bypass'
+                    ? (useROConfigStore.getState().bypassMode === 'Percent' 
+                        ? useROConfigStore.getState().feedFlow * useROConfigStore.getState().bypassValue / 100 
+                        : useROConfigStore.getState().bypassValue)
+                    : 0
                 }
                 stages={stages.map((s) => ({
                   vessels: s.pv,

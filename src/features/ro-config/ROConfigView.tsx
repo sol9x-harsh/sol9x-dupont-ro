@@ -13,6 +13,8 @@ import {
   selectBlendedPermeateTDS,
   selectBlendedRejection,
   selectAdjustmentResult,
+  selectWarnings,
+  selectValidationErrors,
 } from '@/store/simulation/simulation-selectors';
 import { useROConfigStore } from '@/store/ro-config-store';
 import { useFeedStore } from '@/store/feed-store';
@@ -24,6 +26,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -61,9 +64,6 @@ import { NumericInput } from '@/components/ui/numeric-input';
 
 export function ROConfigView() {
   const [flowOpen, setFlowOpen] = useState(false);
-  const [passOptimizationMode, setPassOptimizationMode] = useState<
-    'Bypass' | 'None'
-  >('Bypass');
   const [chemOpen, setChemOpen] = useState(false);
   const chemicalAdjustment = useROConfigStore((s) => s.chemicalAdjustment);
   const updateChemicalAdjustment = useROConfigStore(
@@ -104,6 +104,7 @@ export function ROConfigView() {
         membraneModel: string;
         isd?: boolean;
         isdElements?: string[];
+        recyclePercent?: number;
       }[]
     >
   >({
@@ -114,6 +115,7 @@ export function ROConfigView() {
         elements: 7,
         pressureDrop: 0.7,
         membraneModel: 'SW30HRLE-400i',
+        recyclePercent: 0,
       },
       {
         id: 's2',
@@ -121,6 +123,7 @@ export function ROConfigView() {
         elements: 7,
         pressureDrop: 0.7,
         membraneModel: 'SW30HRLE-400i',
+        recyclePercent: 0,
       },
     ],
   });
@@ -140,7 +143,19 @@ export function ROConfigView() {
   const storeRecovery = useROConfigStore((s) => s.systemRecovery);
   const storePressure = useROConfigStore((s) => s.feedPressureBar);
   const storePermeatePressure = useROConfigStore((s) => s.permeatePressureBar);
-  const systemTemperature = useFeedStore((s) => s.chemistry.designTemperature);
+  const { 
+    passOptimizationMode, 
+    bypassMode, 
+    bypassValue, 
+    concentrateRecycle,
+    setPassOptimizationMode, 
+    setBypassMode, 
+    setBypassValue, 
+    setConcentrateRecycle 
+  } = useROConfigStore();
+  const bypassFlow = passOptimizationMode === 'Bypass'
+    ? (bypassMode === 'Percent' ? feedFlow * bypassValue / 100 : bypassValue)
+    : 0;
 
   const liveRecovery = useSimulationStore(selectSystemRecoveryPercent);
   const livePermeateFlow = useSimulationStore(selectTotalPermeateFlow);
@@ -151,6 +166,22 @@ export function ROConfigView() {
   const liveLowestNDP = useSimulationStore(selectLowestNDP);
   const livePermeateTDS = useSimulationStore(selectBlendedPermeateTDS);
   const liveRejection = useSimulationStore(selectBlendedRejection);
+
+  const warnings = useSimulationStore(selectWarnings);
+  const validationErrors = useSimulationStore(selectValidationErrors);
+  const constraintCount =
+    (warnings?.filter((w) => w.severity !== 'info').length || 0) +
+    (validationErrors?.length || 0);
+
+  const activeTempView = useFeedStore((s) => s.activeTemperatureView);
+  const setActiveTempView = useFeedStore((s) => s.setActiveTemperatureView);
+  const updateFeedField = useFeedStore((s) => s.updateChemistryField);
+
+  const systemTemperature = useFeedStore((s) => 
+    activeTempView === 'min' ? s.chemistry.minTemperature :
+    activeTempView === 'max' ? s.chemistry.maxTemperature :
+    s.chemistry.designTemperature
+  );
 
   const displayRecovery = liveRecovery ?? storeRecovery;
   const displayPermeateFlow =
@@ -175,6 +206,7 @@ export function ROConfigView() {
           elements: 7,
           pressureDrop: 0.7,
           membraneModel: 'SW30HRLE-400i',
+          recyclePercent: 0,
         },
       ],
     });
@@ -202,6 +234,7 @@ export function ROConfigView() {
         id: stg.id,
         label: `Stage ${stgIdx + 1}`,
         pressureDropBar: stg.pressureDrop,
+        recyclePercent: stg.recyclePercent ?? 0,
         vessels: Array.from({ length: Math.max(1, stg.vessels) }, (_, vi) => ({
           id: `${passId}-${stg.id}-v${vi + 1}`,
           label: `V${vi + 1}`,
@@ -233,6 +266,7 @@ export function ROConfigView() {
         membraneModel:
           activeStages[activeStages.length - 1]?.membraneModel ||
           'SW30HRLE-400i',
+        recyclePercent: 0,
       },
     ];
     setPassData({ ...passData, [activePass]: newStages });
@@ -334,9 +368,9 @@ export function ROConfigView() {
             <DialogTitle className='font-display text-xl text-primary font-semibold'>
               Flow Calculator
             </DialogTitle>
-            <p className='text-sm text-slate-500'>
+            <DialogDescription className='text-sm text-slate-500'>
               Please edit flow values for your RO system
-            </p>
+            </DialogDescription>
           </div>
 
           <div className='p-6 flex flex-col gap-8'>
@@ -585,6 +619,8 @@ export function ROConfigView() {
                   <div className='flex items-center gap-2'>
                     <input
                       type='checkbox'
+                      checked={concentrateRecycle.enabled}
+                      onChange={(e) => setConcentrateRecycle({ enabled: e.target.checked })}
                       className='accent-primary w-4 h-4 rounded-sm border-slate-300 cursor-pointer'
                     />
                     <span className='text-sm font-medium text-slate-700'>
@@ -596,26 +632,44 @@ export function ROConfigView() {
                     <div className='flex items-center gap-2 flex-1'>
                       <input
                         type='radio'
-                        disabled
-                        className='w-4 h-4 opacity-50 cursor-not-allowed'
+                        name='recycleMode'
+                        checked={concentrateRecycle.mode === 'Percent'}
+                        onChange={() => setConcentrateRecycle({ mode: 'Percent' })}
+                        disabled={!concentrateRecycle.enabled}
+                        className='w-4 h-4 accent-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
                       />
-                      <Input
-                        disabled
-                        defaultValue='0.00'
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 flex-1 rounded-sm'
+                      <NumericInput
+                        disabled={!concentrateRecycle.enabled || concentrateRecycle.mode !== 'Percent'}
+                        value={concentrateRecycle.mode === 'Percent' ? concentrateRecycle.value : 0}
+                        onChange={(val) => {
+                          if (val >= 0 && val <= 100) {
+                            setConcentrateRecycle({ value: val });
+                          }
+                        }}
+                        precision={2}
+                        className='h-9 bg-slate-50 border-slate-200 text-slate-700 flex-1 rounded-sm px-2 disabled:opacity-50'
                       />
                       <span className='text-sm text-slate-500 w-[20px]'>%</span>
                     </div>
                     <div className='flex items-center gap-2 flex-1'>
                       <input
                         type='radio'
-                        disabled
-                        className='w-4 h-4 opacity-50 cursor-not-allowed'
+                        name='recycleMode'
+                        checked={concentrateRecycle.mode === 'Flow'}
+                        onChange={() => setConcentrateRecycle({ mode: 'Flow' })}
+                        disabled={!concentrateRecycle.enabled}
+                        className='w-4 h-4 accent-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
                       />
-                      <Input
-                        disabled
-                        defaultValue='0.00'
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 flex-1 rounded-sm'
+                      <NumericInput
+                        disabled={!concentrateRecycle.enabled || concentrateRecycle.mode !== 'Flow'}
+                        value={concentrateRecycle.mode === 'Flow' ? concentrateRecycle.value : 0}
+                        onChange={(val) => {
+                          if (val >= 0) {
+                            setConcentrateRecycle({ value: val });
+                          }
+                        }}
+                        precision={2}
+                        className='h-9 bg-slate-50 border-slate-200 text-slate-700 flex-1 rounded-sm px-2 disabled:opacity-50'
                       />
                       <span className='text-sm text-slate-500 w-[30px]'>
                         m³/h
@@ -672,12 +726,20 @@ export function ROConfigView() {
                         <input
                           type='radio'
                           name='sysPerm'
+                          checked={bypassMode === 'Percent'}
+                          onChange={() => setBypassMode('Percent')}
                           className='accent-primary w-4 h-4 cursor-pointer'
                         />
-                        <Input
-                          disabled
-                          defaultValue='0.00'
-                          className='h-9 bg-slate-200/60 border-transparent text-slate-500 flex-1 rounded-sm'
+                        <NumericInput
+                          disabled={bypassMode !== 'Percent'}
+                          value={bypassMode === 'Percent' ? bypassValue : 0}
+                          onChange={(val) => {
+                            if (val >= 0 && val <= 100) {
+                              setBypassValue(val);
+                            }
+                          }}
+                          precision={2}
+                          className='h-9 bg-slate-50 border-slate-200 text-slate-700 flex-1 rounded-sm px-2'
                         />
                         <span className='text-sm text-slate-500 w-[30px]'>
                           %
@@ -692,14 +754,21 @@ export function ROConfigView() {
                       <div className='flex items-center gap-2 w-full'>
                         <input
                           type='radio'
-                          readOnly
-                          checked
                           name='sysPerm'
+                          checked={bypassMode === 'Flow'}
+                          onChange={() => setBypassMode('Flow')}
                           className='accent-primary w-4 h-4 cursor-pointer'
                         />
-                        <Input
-                          defaultValue='0.00'
-                          className='h-9 bg-white border-slate-200 focus-visible:ring-primary/20 rounded-sm flex-1'
+                        <NumericInput
+                          disabled={bypassMode !== 'Flow'}
+                          value={bypassMode === 'Flow' ? bypassValue : 0}
+                          onChange={(val) => {
+                            if (val >= 0 && val <= feedFlow) {
+                              setBypassValue(val);
+                            }
+                          }}
+                          precision={2}
+                          className='h-9 bg-slate-50 border-slate-200 text-slate-700 flex-1 rounded-sm px-2'
                         />
                         <span className='text-sm text-slate-500 w-[30px]'>
                           m³/h
@@ -736,11 +805,11 @@ export function ROConfigView() {
             <DialogTitle className='font-display text-lg text-primary font-bold'>
               Chemical Adjustment
             </DialogTitle>
-            <p className='text-[13px] text-muted-foreground mt-1'>
+            <DialogDescription className='text-[13px] text-muted-foreground mt-1'>
               You may add chemicals/degas from here. Based on your selection
               table gets updated. Please note that LSI and S&DI require non zero
               Ca and CO₂ Concentrations.
-            </p>
+            </DialogDescription>
           </div>
           <div className='p-6 overflow-y-auto flex flex-col gap-6 flex-1 custom-scrollbar'>
             {/* Dosing Cards Grid */}
@@ -1481,14 +1550,16 @@ export function ROConfigView() {
           <span className='text-[13px] font-medium text-foreground opacity-90'>
             System Temperature:
           </span>
-          <Select defaultValue='design'>
+          <Select 
+            value={activeTempView} 
+            onValueChange={(val: any) => setActiveTempView(val)}>
             <SelectTrigger className='h-8 text-xs w-28 bg-muted/20 border-border'>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value='minimum'>Minimum</SelectItem>
+              <SelectItem value='min'>Minimum</SelectItem>
               <SelectItem value='design'>Design</SelectItem>
-              <SelectItem value='maximum'>Maximum</SelectItem>
+              <SelectItem value='max'>Maximum</SelectItem>
             </SelectContent>
           </Select>
           <div className='flex items-center border border-border rounded-md bg-muted/20 overflow-hidden'>
@@ -1497,9 +1568,13 @@ export function ROConfigView() {
               onChange={(e) => {
                 const val = parseFloat(e.target.value);
                 if (!isNaN(val) && val >= 0 && val <= 80) {
-                  useFeedStore
-                    .getState()
-                    .updateChemistryField('designTemperature', val);
+                  if (activeTempView === 'min') {
+                    updateFeedField('minTemperature', val);
+                  } else if (activeTempView === 'max') {
+                    updateFeedField('maxTemperature', val);
+                  } else {
+                    updateFeedField('designTemperature', val);
+                  }
                 }
               }}
               className='h-8 w-14 text-xs border-0 focus-visible:ring-0 rounded-none bg-transparent px-2 font-mono'
@@ -1539,6 +1614,7 @@ export function ROConfigView() {
           <div className='p-6 flex justify-center min-h-[250px] relative pt-8'>
             <ProcessFlowDiagram
               feedFlow={feedFlow}
+              bypassFlow={bypassFlow}
               permeateFlow={displayPermeateFlow}
               rejectFlow={displayConcentrateFlow}
               recovery={displayRecovery}
@@ -1638,7 +1714,7 @@ export function ROConfigView() {
               icon: AlertTriangle,
               color: 'text-destructive',
               onClick: () => setConOpen(true),
-              badge: 2,
+              badge: constraintCount,
             },
           ].map((btn) => (
             <Button
@@ -1650,7 +1726,7 @@ export function ROConfigView() {
             >
               <btn.icon className={cn('w-3.5 h-3.5', btn.color)} />
               {btn.label}
-              {btn.badge && (
+              {btn.badge !== undefined && btn.badge > 0 && (
                 <span className='absolute -top-1.5 -right-1.5 w-4 h-4 bg-destructive text-white text-[8px] flex items-center justify-center rounded-full border-2 border-white font-black'>
                   {btn.badge}
                 </span>
@@ -2281,7 +2357,20 @@ export function ROConfigView() {
                     <td className='px-6 py-5 pr-8'>
                       <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all w-24'>
                         <Input
-                          defaultValue='0.00'
+                          value={stg.recyclePercent || 0}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val) && val >= 0 && val <= 100) {
+                              setPassData({
+                                ...passData,
+                                [activePass]: activeStages.map((s) =>
+                                  s.id === stg.id
+                                    ? { ...s, recyclePercent: val }
+                                    : s,
+                                ),
+                              });
+                            }
+                          }}
                           className='h-full flex-1 min-w-0 border-0 rounded-none text-sm font-mono font-bold px-2 focus-visible:ring-0 bg-transparent text-foreground'
                         />
                         <div className='px-2.5 h-full flex items-center bg-muted/20 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>

@@ -51,7 +51,8 @@ export function runSimulationPipeline(context: SimulationContext): SimulationOut
   // ── Step 5: Flow propagation ─────────────────────────────────────────────────
   const flows = propagateMultiStage(
     hydraulics.feedFlowM3h,
-    hydraulics.stageRecoveryFractions
+    hydraulics.stageRecoveryFractions,
+    hydraulics.stageRecycleFractions
   ) ?? {
     feedFlowM3h: hydraulics.feedFlowM3h,
     totalPermeateFlowM3h: 0,

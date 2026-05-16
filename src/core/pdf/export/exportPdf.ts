@@ -5,6 +5,7 @@ export type PdfExportStatus = 'idle' | 'generating' | 'done' | 'error';
 export interface PdfExportOptions {
   selectedSections?: string[];
   filename?: string;
+  pfdImage?: string;
   onStatusChange?: (status: PdfExportStatus) => void;
 }
 
@@ -39,6 +40,7 @@ export async function generateEngineeringPDF(
     const element = createElement(EngineeringReportPDF, {
       report,
       selectedSections,
+      pfdImage: options.pfdImage,
     });
 
     // Render to Blob

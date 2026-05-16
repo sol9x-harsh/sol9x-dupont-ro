@@ -12,6 +12,7 @@ export interface Stage {
   label: string;
   vessels: Vessel[];
   pressureDropBar?: number;
+  recyclePercent?: number;
 }
 
 export interface Pass {
@@ -39,6 +40,12 @@ export interface ChemicalAdjustment {
   dechlorinatorDose: number;
 }
 
+export interface ConcentrateRecycle {
+  enabled: boolean;
+  mode: 'Percent' | 'Flow';
+  value: number;
+}
+
 interface ROConfigState {
   passes: Pass[];
   feedFlow: number;
@@ -48,6 +55,14 @@ interface ROConfigState {
   permeateFlow: number;
   concentrateFlow: number;
   chemicalAdjustment: ChemicalAdjustment;
+  passOptimizationMode: 'Bypass' | 'None';
+  bypassMode: 'Percent' | 'Flow';
+  bypassValue: number;
+  concentrateRecycle: ConcentrateRecycle;
+  setPassOptimizationMode: (mode: 'Bypass' | 'None') => void;
+  setBypassMode: (mode: 'Percent' | 'Flow') => void;
+  setBypassValue: (value: number) => void;
+  setConcentrateRecycle: (patch: Partial<ConcentrateRecycle>) => void;
   setPasses: (passes: Pass[]) => void;
   setFeedFlow: (flow: number) => void;
   setSystemRecovery: (recovery: number) => void;
@@ -57,7 +72,7 @@ interface ROConfigState {
   updateChemicalAdjustment: (
     patch: Partial<ChemicalAdjustment>
   ) => void;
-  hydrateROConfig: (data: Partial<Omit<ROConfigState, 'setPasses' | 'setFeedFlow' | 'setSystemRecovery' | 'setFeedPressureBar' | 'setPermeatePressureBar' | 'updateChemicalAdjustment' | 'resetROConfig' | 'hydrateROConfig' | 'setPermeateFlow'>>) => void;
+  hydrateROConfig: (data: Partial<Omit<ROConfigState, 'setPasses' | 'setFeedFlow' | 'setSystemRecovery' | 'setFeedPressureBar' | 'setPermeatePressureBar' | 'updateChemicalAdjustment' | 'resetROConfig' | 'hydrateROConfig' | 'setPermeateFlow' | 'setPassOptimizationMode' | 'setBypassMode' | 'setBypassValue' | 'setConcentrateRecycle'>>) => void;
   resetROConfig: () => void;
 }
 
@@ -88,10 +103,25 @@ const defaultState = {
   permeateFlow: 0,
   concentrateFlow: 0,
   chemicalAdjustment: defaultChemicalAdjustment,
+  passOptimizationMode: 'None' as 'Bypass' | 'None',
+  bypassMode: 'Flow' as 'Percent' | 'Flow',
+  bypassValue: 0,
+  concentrateRecycle: {
+    enabled: false,
+    mode: 'Percent' as 'Percent' | 'Flow',
+    value: 0,
+  },
 };
 
 export const useROConfigStore = create<ROConfigState>((set) => ({
   ...defaultState,
+
+  setPassOptimizationMode: (mode) => set({ passOptimizationMode: mode }),
+  setBypassMode: (mode) => set({ bypassMode: mode }),
+  setBypassValue: (val) => set({ bypassValue: val }),
+  setConcentrateRecycle: (patch) => set((state) => ({
+    concentrateRecycle: { ...state.concentrateRecycle, ...patch }
+  })),
 
   setPasses: (passes) => set({ passes }),
 

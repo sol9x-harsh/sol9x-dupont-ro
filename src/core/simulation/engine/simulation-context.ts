@@ -15,6 +15,8 @@ export interface HydraulicsContext {
   permeatePressureBar: number;
   stageRecoveryFractions: number[];
   stagePressureDropsBar: number[];
+  stageRecycleFractions?: number[];
+  bypassFlowM3h?: number;
 }
 
 export interface MembraneContext {

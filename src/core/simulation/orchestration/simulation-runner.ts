@@ -94,6 +94,20 @@ function buildStagePressureDrops(
   return drops;
 }
 
+function buildStageRecycleFractions(
+  passes: ReturnType<typeof useROConfigStore.getState>['passes'],
+): number[] {
+  const fractions: number[] = [];
+  for (const pass of passes) {
+    for (const stage of pass.stages) {
+      if (stage.vessels.length === 0) continue;
+      // Convert percentage to fraction
+      fractions.push((stage.recyclePercent ?? 0) / 100);
+    }
+  }
+  return fractions;
+}
+
 function buildStageGeometries(
   passes: ReturnType<typeof useROConfigStore.getState>['passes'],
   resolvedArea: number,
@@ -161,10 +175,17 @@ export function buildSimulationContext(): SimulationContext | null {
   const ionSum = Object.values(feed.chemistry.ions).reduce((s, v) => s + v, 0);
   const effectiveTDS = feed.chemistry.tds > 0 ? feed.chemistry.tds : ionSum;
 
+  const temperatureC =
+    feed.activeTemperatureView === 'min'
+      ? feed.chemistry.minTemperature
+      : feed.activeTemperatureView === 'max'
+        ? feed.chemistry.maxTemperature
+        : feed.chemistry.designTemperature;
+
   const adjustmentResult = simulateChemicalAdjustment(
     feed.chemistry.ions,
     feed.chemistry.ph,
-    feed.chemistry.designTemperature,
+    temperatureC,
     roConfig.chemicalAdjustment,
   );
   const finalIons = adjustmentResult.final.ions;
@@ -184,7 +205,16 @@ export function buildSimulationContext(): SimulationContext | null {
   // Use feedPressureBar from the store (seeded / user-set).
   const feedPressureBar =
     roConfig.feedPressureBar > 0 ? roConfig.feedPressureBar : 10.0;
-  const feedFlowM3h = roConfig.feedFlow;
+  // Calculate bypass flow
+  const passOptimizationMode = roConfig.passOptimizationMode;
+  const bypassValue = roConfig.bypassValue;
+  const bypassMode = roConfig.bypassMode;
+  const bypassFlowM3h = passOptimizationMode === 'Bypass' 
+    ? (bypassMode === 'Percent' ? roConfig.feedFlow * bypassValue / 100 : bypassValue)
+    : 0;
+
+  // RO net feed is total feed minus bypass
+  const feedFlowM3h = roConfig.feedFlow - bypassFlowM3h;
 
   if (
     !isContextViable(
@@ -212,7 +242,7 @@ export function buildSimulationContext(): SimulationContext | null {
       measuredTDSMgL: feed.chemistry.tds > 0 ? feed.chemistry.tds : null,
       measuredConductivityUsCm:
         feed.chemistry.conductivity > 0 ? feed.chemistry.conductivity : null,
-      temperatureC: feed.chemistry.designTemperature,
+      temperatureC,
       pH: finalPh,
     },
     hydraulics: {
@@ -221,6 +251,8 @@ export function buildSimulationContext(): SimulationContext | null {
       permeatePressureBar,
       stageRecoveryFractions,
       stagePressureDropsBar: stagePressureDrops,
+      stageRecycleFractions: buildStageRecycleFractions(roConfig.passes),
+      bypassFlowM3h,
     },
     membrane: {
       rejectionPercent: membrane.nominalRejection * 100,
@@ -243,6 +275,31 @@ export function runSimulationFromStores(
   const result = runSimulation(context);
   if (result.success && result.output) {
     result.output.adjustment = context.adjustmentResult;
+    
+    // Apply Bypass Blending Post-Simulation
+    const bypassFlow = context.hydraulics.bypassFlowM3h ?? 0;
+    if (bypassFlow > 0) {
+      const roPermFlow = result.output.summary.totalPermeateFlowM3h;
+      const roPermTDS = result.output.summary.blendedPermeateTDSMgL;
+      
+      // We assume bypass has the feed TDS (adjusted or raw). 
+      // Typically bypass is raw treated feed.
+      const bypassTDS = context.feed.measuredTDSMgL ?? 0; 
+
+      const newTotalPermFlow = roPermFlow + bypassFlow;
+      const newTotalTDS = newTotalPermFlow > 0 
+        ? (roPermFlow * roPermTDS + bypassFlow * bypassTDS) / newTotalPermFlow 
+        : 0;
+
+      result.output.summary.totalPermeateFlowM3h = newTotalPermFlow;
+      result.output.summary.blendedPermeateTDSMgL = newTotalTDS;
+      
+      // Also adjust system recovery to reflect total feed
+      const totalFeed = context.hydraulics.feedFlowM3h + bypassFlow;
+      if (totalFeed > 0) {
+        result.output.summary.systemRecoveryPercent = (newTotalPermFlow / totalFeed) * 100;
+      }
+    }
   }
   return result;
 }

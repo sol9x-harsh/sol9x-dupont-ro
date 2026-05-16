@@ -29,6 +29,9 @@ type FeedSnapshot = {
   tds: number;
   conductivity: number;
   designTemperature: number;
+  minTemperature: number;
+  maxTemperature: number;
+  activeTemperatureView: string;
   ph: number;
 };
 
@@ -38,16 +41,21 @@ type ROConfigSnapshot = {
   feedPressureBar: number;
   permeatePressureBar: number;
   passCount: number;
+  chemicalAdjustment: string;
+  bypassSignature: string;
   stageSignature: string; // JSON-encoded pass/stage topology + per-stage pressure drops
 };
 
 function snapshotFeed(): FeedSnapshot {
-  const { chemistry } = useFeedStore.getState();
+  const { chemistry, activeTemperatureView } = useFeedStore.getState();
   return {
     ions: JSON.stringify(chemistry.ions),
     tds: chemistry.tds,
     conductivity: chemistry.conductivity,
     designTemperature: chemistry.designTemperature,
+    minTemperature: chemistry.minTemperature,
+    maxTemperature: chemistry.maxTemperature,
+    activeTemperatureView,
     ph: chemistry.ph,
   };
 }
@@ -59,6 +67,10 @@ function snapshotROConfig(): ROConfigSnapshot {
     feedPressureBar,
     permeatePressureBar,
     passes,
+    chemicalAdjustment,
+    passOptimizationMode,
+    bypassMode,
+    bypassValue,
   } = useROConfigStore.getState();
   return {
     feedFlow,
@@ -66,6 +78,8 @@ function snapshotROConfig(): ROConfigSnapshot {
     feedPressureBar,
     permeatePressureBar,
     passCount: passes.length,
+    chemicalAdjustment: JSON.stringify(chemicalAdjustment),
+    bypassSignature: `${passOptimizationMode}-${bypassMode}-${bypassValue}`,
     stageSignature: JSON.stringify(
       passes.map((p) => ({
         id: p.id,

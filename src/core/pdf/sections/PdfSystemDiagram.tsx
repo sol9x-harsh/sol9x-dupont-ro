@@ -10,6 +10,7 @@ import {
   Path,
   Circle,
   G,
+  Image,
 } from '@react-pdf/renderer';
 import { PdfPageTemplate } from '../templates/PdfPageTemplate';
 import {
@@ -18,6 +19,7 @@ import {
 } from '../components/PdfSectionHeader';
 import { PDF_COLORS, PDF_FONTS, PDF_SIZES } from '../constants/pdf.constants';
 import type { FullEngineeringReport } from '@/core/reporting/models/report.models';
+import { useROConfigStore } from '@/store/ro-config-store';
 
 const s = StyleSheet.create({
   diagramWrapper: {
@@ -100,6 +102,7 @@ interface BfdProps {
   feedPressureBar: number;
   feedTDS: number;
   permeateTDS: number;
+  bypassFlowM3h?: number;
   stages: { vessels: number; elements: number }[];
 }
 
@@ -111,6 +114,7 @@ function BlockFlowDiagram({
   feedPressureBar,
   feedTDS,
   permeateTDS,
+  bypassFlowM3h = 0,
   stages,
 }: BfdProps) {
   // Layout constants (SVG coordinate space: 520 × 200)
@@ -251,7 +255,7 @@ function BlockFlowDiagram({
         strokeWidth='2'
         strokeDasharray='5,3'
       />
-      {/* Permeate exit line */}
+      {/* ── Permeate exit line ── */}
       <Line
         x1={(roStartX + roEndX) / 2}
         y1={permY}
@@ -261,6 +265,45 @@ function BlockFlowDiagram({
         strokeWidth='2'
         strokeDasharray='5,3'
       />
+
+      {/* ── Bypass line ── */}
+      {bypassFlowM3h > 0 && (
+        <G>
+          <Line
+            x1={feedX + 15}
+            y1={pumpCY}
+            x2={feedX + 15}
+            y2={30}
+            stroke={PDF_COLORS.feed}
+            strokeWidth='1.5'
+          />
+          <Line
+            x1={feedX + 15}
+            y1={30}
+            x2={(roStartX + roEndX) / 2 - 4}
+            y2={30}
+            stroke={PDF_COLORS.feed}
+            strokeWidth='1.5'
+          />
+          <Line
+            x1={(roStartX + roEndX) / 2 - 4}
+            y1={30}
+            x2={(roStartX + roEndX) / 2 - 4}
+            y2={H - 16}
+            stroke={PDF_COLORS.feed}
+            strokeWidth='1.5'
+          />
+          <Rect
+            x={(roStartX + roEndX) / 2 - 24}
+            y={24}
+            width={40}
+            height={12}
+            rx='2'
+            fill={PDF_COLORS.feed}
+            opacity='0.2'
+          />
+        </G>
+      )}
 
       {/* ── Reject line (last stage → right) ── */}
       <Line
@@ -299,13 +342,6 @@ function BlockFlowDiagram({
         stroke={PDF_COLORS.permeate}
         strokeWidth='1.2'
       />
-
-      {/* ── Text labels ── */}
-      {/* Feed */}
-      {/* HP Pump */}
-      {/* Stage labels */}
-      {/* PERMEATE */}
-      {/* CONCENTRATE */}
     </Svg>
   );
 }
@@ -315,9 +351,10 @@ function BlockFlowDiagram({
 interface Props {
   report: FullEngineeringReport;
   generatedAt: string;
+  pfdImage?: string;
 }
 
-export function PdfSystemDiagram({ report, generatedAt }: Props) {
+export function PdfSystemDiagram({ report, generatedAt, pfdImage }: Props) {
   const ov = report.systemOverview;
   const stagesForDiagram = report.stages.map((s) => ({
     vessels: s.vesselCount,
@@ -333,57 +370,72 @@ export function PdfSystemDiagram({ report, generatedAt }: Props) {
       <PdfSectionHeader
         number='SECTION VI'
         title='Process Flow Diagram'
-        subtitle='Simplified block flow diagram — RO system topology, flow direction, and instrumentation'
+        subtitle='Detailed process flow diagram — RO system topology, flow direction, and instrumentation'
         accentColor={PDF_COLORS.primary}
       />
 
-      <PdfSubsection title='RO System Block Flow Diagram' marginTop={0} />
+      <PdfSubsection title='RO System Process Flow Diagram' marginTop={0} />
 
       <View style={s.diagramWrapper}>
-        <BlockFlowDiagram
-          feedFlowM3h={ov.systemFeedM3h}
-          permeateFlowM3h={ov.systemPermeateM3h}
-          concentrateFlowM3h={ov.systemConcentrateM3h}
-          recovery={ov.roRecoveryPercent}
-          feedPressureBar={report.passes[0]?.feedPressureBar ?? 0}
-          feedTDS={ov.feedTDSMgL}
-          permeateTDS={ov.permeateTDSMgL}
-          stages={stagesForDiagram}
-        />
+        {pfdImage ? (
+          <Image 
+            src={pfdImage} 
+            style={{ width: '100%', height: 'auto', minHeight: 180 }} 
+          />
+        ) : (
+          <BlockFlowDiagram
+            feedFlowM3h={ov.systemFeedM3h}
+            permeateFlowM3h={ov.systemPermeateM3h}
+            concentrateFlowM3h={ov.systemConcentrateM3h}
+            recovery={ov.roRecoveryPercent}
+            feedPressureBar={report.passes[0]?.feedPressureBar ?? 0}
+            feedTDS={ov.feedTDSMgL}
+            permeateTDS={ov.permeateTDSMgL}
+            bypassFlowM3h={
+              useROConfigStore.getState().passOptimizationMode === 'Bypass'
+                ? (useROConfigStore.getState().bypassMode === 'Percent' 
+                    ? useROConfigStore.getState().feedFlow * useROConfigStore.getState().bypassValue / 100 
+                    : useROConfigStore.getState().bypassValue)
+                : 0
+            }
+            stages={stagesForDiagram}
+          />
+        )}
 
-        {/* Legend */}
-        <View style={s.legendRow}>
-          <View style={s.legendItem}>
-            <View
-              style={[s.legendLine, { backgroundColor: PDF_COLORS.feed }]}
-            />
-            <Text style={s.legendLabel}>Feed Water</Text>
+        {!pfdImage && (
+          <View style={s.legendRow}>
+            <View style={s.legendItem}>
+              <View
+                style={[s.legendLine, { backgroundColor: PDF_COLORS.feed }]}
+              />
+              <Text style={s.legendLabel}>Feed Water</Text>
+            </View>
+            <View style={s.legendItem}>
+              <View
+                style={[
+                  s.legendLine,
+                  { backgroundColor: PDF_COLORS.permeate, borderStyle: 'dashed' },
+                ]}
+              />
+              <Text style={s.legendLabel}>Permeate (Product)</Text>
+            </View>
+            <View style={s.legendItem}>
+              <View
+                style={[s.legendLine, { backgroundColor: PDF_COLORS.reject }]}
+              />
+              <Text style={s.legendLabel}>Concentrate (Reject)</Text>
+            </View>
+            <View style={s.legendItem}>
+              <View
+                style={[
+                  s.legendLine,
+                  { backgroundColor: PDF_COLORS.primaryDark },
+                ]}
+              />
+              <Text style={s.legendLabel}>High-Pressure Line</Text>
+            </View>
           </View>
-          <View style={s.legendItem}>
-            <View
-              style={[
-                s.legendLine,
-                { backgroundColor: PDF_COLORS.permeate, borderStyle: 'dashed' },
-              ]}
-            />
-            <Text style={s.legendLabel}>Permeate (Product)</Text>
-          </View>
-          <View style={s.legendItem}>
-            <View
-              style={[s.legendLine, { backgroundColor: PDF_COLORS.reject }]}
-            />
-            <Text style={s.legendLabel}>Concentrate (Reject)</Text>
-          </View>
-          <View style={s.legendItem}>
-            <View
-              style={[
-                s.legendLine,
-                { backgroundColor: PDF_COLORS.primaryDark },
-              ]}
-            />
-            <Text style={s.legendLabel}>High-Pressure Line</Text>
-          </View>
-        </View>
+        )}
       </View>
 
       {/* Flow data summary below diagram */}
@@ -509,7 +561,7 @@ export function PdfSystemDiagram({ report, generatedAt }: Props) {
             lineHeight: 1.4,
           }}
         >
-          This is a simplified block flow diagram for reference. For full
+          This is a detailed process flow diagram for reference. For full
           P&amp;ID-grade process flow diagrams with instrumentation loops,
           control valves, and detailed piping, refer to the SOL9X web
           application interactive PFD. Instrumentation tags shown are for

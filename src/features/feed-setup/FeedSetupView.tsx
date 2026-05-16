@@ -539,10 +539,36 @@ export function FeedSetupView() {
     setDirectInputError(false);
     const raw = directInputRef.current?.value ?? '';
     const numVal = parseFloat(raw);
-    const delta =
-      isFinite(numVal) && numVal > 0 ? numVal : (ION_DEFAULT_ADD[ionKey] ?? 5);
-    const current = ions[ionKey] ?? 0;
-    handleIonUpdate(ionKey, Math.max(0, current + delta));
+    
+    // If input is empty or zero, calculate amount needed for charge balance
+    if (!isFinite(numVal) || numVal <= 0) {
+      const isCation = CATION_ROWS.some(r => r.storeKey === ionKey);
+      const ew = EQ_WEIGHT[ionKey];
+      if (!ew) return;
+
+      // Use current live totals
+      const cationTotal = totalCationMeq(concMap);
+      const anionTotal = totalAnionMeq(concMap);
+      
+      let neededMeqL = 0;
+      if (isCation) {
+        // Needed = Anions - (Other Cations)
+        const currentMeq = (ions[ionKey] ?? 0) / ew;
+        neededMeqL = anionTotal - (cationTotal - currentMeq);
+      } else {
+        // Needed = Cations - (Other Anions)
+        const currentMeq = (ions[ionKey] ?? 0) / ew;
+        neededMeqL = cationTotal - (anionTotal - currentMeq);
+      }
+
+      const newValMgL = Math.max(0, neededMeqL * ew);
+      handleIonUpdate(ionKey, newValMgL);
+    } else {
+      // If a value is entered, add it to the current concentration
+      const current = ions[ionKey] ?? 0;
+      handleIonUpdate(ionKey, Math.max(0, current + numVal));
+    }
+    
     if (directInputRef.current) directInputRef.current.value = '';
   };
 

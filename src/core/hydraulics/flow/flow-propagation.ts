@@ -12,6 +12,7 @@ export interface StageFlows {
   permeateFlowM3h: number;
   concentrateFlowM3h: number;
   recoveryFraction: number;
+  recycleFraction?: number;
 }
 
 export interface SystemFlows {
@@ -68,7 +69,8 @@ export function propagateSingleStage(
  */
 export function propagateMultiStage(
   feedFlowM3h: number,
-  stageRecoveryFractions: number[]
+  stageRecoveryFractions: number[],
+  stageRecycleFractions?: number[]
 ): SystemFlows | null {
   if (
     !Number.isFinite(feedFlowM3h) ||
@@ -85,13 +87,26 @@ export function propagateMultiStage(
 
   for (let i = 0; i < stageRecoveryFractions.length; i++) {
     const r = stageRecoveryFractions[i];
+    const recycleFrac = stageRecycleFractions?.[i] || 0;
 
-    const stage = propagateSingleStage(currentFeedFlow, r, i);
-    if (stage === null) continue; // skip invalid stage, feed passes through unchanged
+    // Qf = Qi / (1 - (1 - r) * recycleFrac)
+    const divisor = 1 - (1 - r) * recycleFrac;
+    const actualStageFeed = divisor > 0.001 ? currentFeedFlow / divisor : currentFeedFlow;
+    
+    const stage = propagateSingleStage(actualStageFeed, r, i);
+    if (stage === null) continue;
 
-    stages.push(stage);
-    totalPermeate += stage.permeateFlowM3h;
-    currentFeedFlow = stage.concentrateFlowM3h;
+    const Qp = stage.permeateFlowM3h;
+    const Qc_total = stage.concentrateFlowM3h;
+    const Qr = Qc_total * recycleFrac;
+    const Qi_next = Qc_total - Qr;
+
+    stages.push({
+      ...stage,
+      recycleFraction: recycleFrac
+    });
+    totalPermeate += Qp;
+    currentFeedFlow = Qi_next;
   }
 
   const concentrateFlowM3h = currentFeedFlow;

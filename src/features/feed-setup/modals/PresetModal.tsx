@@ -482,8 +482,8 @@ export function PresetModal({
                     </div>
                     {(() => {
                       const ions = preset.feedChemistry?.ions ?? mapLibraryToFeedChemistry(preset as LibraryEntry).ions;
-                      const catMeq = totalCationMeq(ions as Record<string, number>);
-                      const anMeq = totalAnionMeq(ions as Record<string, number>);
+                      const catMeq = totalCationMeq(ions as unknown as Record<string, number>);
+                      const anMeq = totalAnionMeq(ions as unknown as Record<string, number>);
                       const cb = catMeq - anMeq;
                       return (
                         <div className='flex gap-12 relative z-10'>

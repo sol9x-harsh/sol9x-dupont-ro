@@ -48,7 +48,10 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { MembraneSelector } from './components/MembraneSelector';
-import { ProcessFlowDiagram } from '@/components/engineering/pfd/ProcessFlowDiagram';
+import {
+  ProcessFlowDiagram,
+  type PassConfig,
+} from '@/components/engineering/pfd/ProcessFlowDiagram';
 
 import { IonBalanceModal } from '@/features/ro-config/modals/IonBalanceModal';
 import { ConstraintModal } from '@/features/ro-config/modals/ConstraintModal';
@@ -63,11 +66,18 @@ export function ROConfigView() {
   >('Bypass');
   const [chemOpen, setChemOpen] = useState(false);
   const chemicalAdjustment = useROConfigStore((s) => s.chemicalAdjustment);
-  const updateChemicalAdjustment = useROConfigStore((s) => s.updateChemicalAdjustment);
+  const updateChemicalAdjustment = useROConfigStore(
+    (s) => s.updateChemicalAdjustment,
+  );
   const adjustmentResult = useSimulationStore(selectAdjustmentResult);
-  const simOutput = useSimulationStore(s => s.output);
+  const simOutput = useSimulationStore((s) => s.output);
   const {
-    phDownOn, degasOn, phUpOn, antiScalantOn, dechlorinatorOn, degasMode
+    phDownOn,
+    degasOn,
+    phUpOn,
+    antiScalantOn,
+    dechlorinatorOn,
+    degasMode,
   } = chemicalAdjustment;
   const [ionOpen, setIonOpen] = useState(false);
   const [conOpen, setConOpen] = useState(false);
@@ -76,6 +86,12 @@ export function ROConfigView() {
   // Pass & Stage Management
   const [passes, setPasses] = useState<string[]>(['p1']);
   const [activePass, setActivePass] = useState('p1');
+  const [passRecovery, setPassRecovery] = useState<Record<string, number>>({
+    p1: 75,
+  });
+  const [passFlowFactor, setPassFlowFactor] = useState<Record<string, number>>({
+    p1: 0.85,
+  });
 
   const [passData, setPassData] = useState<
     Record<
@@ -92,8 +108,20 @@ export function ROConfigView() {
     >
   >({
     p1: [
-      { id: 's1', vessels: 42, elements: 7, pressureDrop: 0.7, membraneModel: 'SW30HRLE-400i' },
-      { id: 's2', vessels: 21, elements: 7, pressureDrop: 0.7, membraneModel: 'SW30HRLE-400i' },
+      {
+        id: 's1',
+        vessels: 42,
+        elements: 7,
+        pressureDrop: 0.7,
+        membraneModel: 'SW30HRLE-400i',
+      },
+      {
+        id: 's2',
+        vessels: 21,
+        elements: 7,
+        pressureDrop: 0.7,
+        membraneModel: 'SW30HRLE-400i',
+      },
     ],
   });
 
@@ -140,8 +168,18 @@ export function ROConfigView() {
     setPasses([...passes, id]);
     setPassData({
       ...passData,
-      [id]: [{ id: 's1', vessels: 10, elements: 7, pressureDrop: 0.7, membraneModel: 'SW30HRLE-400i' }],
+      [id]: [
+        {
+          id: 's1',
+          vessels: 10,
+          elements: 7,
+          pressureDrop: 0.7,
+          membraneModel: 'SW30HRLE-400i',
+        },
+      ],
     });
+    setPassRecovery((prev) => ({ ...prev, [id]: storeRecovery }));
+    setPassFlowFactor((prev) => ({ ...prev, [id]: 0.85 }));
     setActivePass(id);
   };
 
@@ -159,7 +197,7 @@ export function ROConfigView() {
     const storePasses = passes.map((passId, passIdx) => ({
       id: passId,
       label: `Pass ${passIdx + 1}`,
-      recovery: storeRecovery,
+      recovery: passRecovery[passId] ?? storeRecovery,
       stages: (passData[passId] || []).map((stg, stgIdx) => ({
         id: stg.id,
         label: `Stage ${stgIdx + 1}`,
@@ -173,7 +211,7 @@ export function ROConfigView() {
       })),
     }));
     useROConfigStore.getState().setPasses(storePasses);
-  }, [passes, passData, storeRecovery]);
+  }, [passes, passData, storeRecovery, passRecovery]);
 
   useEffect(() => {
     syncToStore();
@@ -192,7 +230,9 @@ export function ROConfigView() {
         ),
         elements: 7,
         pressureDrop: 0.7,
-        membraneModel: activeStages[activeStages.length - 1]?.membraneModel || 'SW30HRLE-400i',
+        membraneModel:
+          activeStages[activeStages.length - 1]?.membraneModel ||
+          'SW30HRLE-400i',
       },
     ];
     setPassData({ ...passData, [activePass]: newStages });
@@ -203,66 +243,70 @@ export function ROConfigView() {
     setPassData({ ...passData, [activePass]: activeStages.slice(0, -1) });
   };
 
-  const cf = simOutput?.summary?.feedTDSMgL ? simOutput.summary.concentrateTDSMgL / simOutput.summary.feedTDSMgL : 1;
-  const tableData = adjustmentResult ? [
-    {
-      label: 'pH',
-      b: adjustmentResult.beforeAdjustment.ph.toFixed(2),
-      a: adjustmentResult.afterDegas.ph.toFixed(2),
-      r: (adjustmentResult.final.ph + 0.1).toFixed(2), // slightly elevated in concentrate due to equilibrium
-    },
-    {
-      label: 'LSI*',
-      b: adjustmentResult.beforeAdjustment.lsi.toFixed(2),
-      a: adjustmentResult.afterDegas.lsi.toFixed(2),
-      r: (adjustmentResult.final.lsi + Math.log10(cf)).toFixed(2),
-    },
-    {
-      label: 'Stiff & Davis Index*',
-      b: adjustmentResult.beforeAdjustment.sdi.toFixed(2),
-      a: adjustmentResult.afterDegas.sdi.toFixed(2),
-      r: (adjustmentResult.final.sdi + Math.log10(cf)).toFixed(2),
-    },
-    {
-      label: 'TD Solutes (mg/L)',
-      b: adjustmentResult.beforeAdjustment.tds.toFixed(2),
-      a: adjustmentResult.afterDegas.tds.toFixed(2),
-      r: (adjustmentResult.final.tds * cf).toFixed(2),
-    },
-    {
-      label: 'Ionic Strength (molal)',
-      b: adjustmentResult.beforeAdjustment.ionicStrength.toFixed(3),
-      a: adjustmentResult.afterDegas.ionicStrength.toFixed(3),
-      r: (adjustmentResult.final.ionicStrength * cf).toFixed(3),
-    },
-    {
-      label: 'HCO₃⁻ (mg/L)',
-      b: adjustmentResult.beforeAdjustment.ions.bicarbonate.toFixed(2),
-      a: adjustmentResult.afterDegas.ions.bicarbonate.toFixed(2),
-      r: (adjustmentResult.final.ions.bicarbonate * cf).toFixed(2),
-    },
-    {
-      label: 'CO₂ (mg/L)',
-      b: adjustmentResult.beforeAdjustment.ions.co2.toFixed(2),
-      a: adjustmentResult.afterDegas.ions.co2.toFixed(2),
-      r: adjustmentResult.final.ions.co2.toFixed(2),
-    },
-    {
-      label: 'CO₃²⁻ (mg/L)',
-      b: adjustmentResult.beforeAdjustment.ions.carbonate.toFixed(2),
-      a: adjustmentResult.afterDegas.ions.carbonate.toFixed(2),
-      r: (adjustmentResult.final.ions.carbonate * cf).toFixed(2),
-    },
-  ] : [
-    { label: 'pH', b: '7.20', a: '11.15', r: '7.15' },
-    { label: 'LSI*', b: '-1.38', a: '0.88', r: '-0.29' },
-    { label: 'Stiff & Davis Index*', b: '-0.24', a: '1.97', r: '0.36' },
-    { label: 'TD Solutes (mg/L)', b: '151.57', a: '94.84', r: '606.26' },
-    { label: 'Ionic Strength (molal)', b: '0.00', a: '0.00', r: '0.01' },
-    { label: 'HCO₃⁻ (mg/L)', b: '80.12', a: '1.56', r: '320.40' },
-    { label: 'CO₂ (mg/L)', b: '8.56', a: '0.00', r: '34.28' },
-    { label: 'CO₃²⁻ (mg/L)', b: '0.07', a: '12.11', r: '0.33' },
-  ];
+  const cf = simOutput?.summary?.feedTDSMgL
+    ? simOutput.summary.concentrateTDSMgL / simOutput.summary.feedTDSMgL
+    : 1;
+  const tableData = adjustmentResult
+    ? [
+        {
+          label: 'pH',
+          b: adjustmentResult.beforeAdjustment.ph.toFixed(2),
+          a: adjustmentResult.afterDegas.ph.toFixed(2),
+          r: (adjustmentResult.final.ph + 0.1).toFixed(2), // slightly elevated in concentrate due to equilibrium
+        },
+        {
+          label: 'LSI*',
+          b: adjustmentResult.beforeAdjustment.lsi.toFixed(2),
+          a: adjustmentResult.afterDegas.lsi.toFixed(2),
+          r: (adjustmentResult.final.lsi + Math.log10(cf)).toFixed(2),
+        },
+        {
+          label: 'Stiff & Davis Index*',
+          b: adjustmentResult.beforeAdjustment.sdi.toFixed(2),
+          a: adjustmentResult.afterDegas.sdi.toFixed(2),
+          r: (adjustmentResult.final.sdi + Math.log10(cf)).toFixed(2),
+        },
+        {
+          label: 'TD Solutes (mg/L)',
+          b: adjustmentResult.beforeAdjustment.tds.toFixed(2),
+          a: adjustmentResult.afterDegas.tds.toFixed(2),
+          r: (adjustmentResult.final.tds * cf).toFixed(2),
+        },
+        {
+          label: 'Ionic Strength (molal)',
+          b: adjustmentResult.beforeAdjustment.ionicStrength.toFixed(3),
+          a: adjustmentResult.afterDegas.ionicStrength.toFixed(3),
+          r: (adjustmentResult.final.ionicStrength * cf).toFixed(3),
+        },
+        {
+          label: 'HCO₃⁻ (mg/L)',
+          b: adjustmentResult.beforeAdjustment.ions.bicarbonate.toFixed(2),
+          a: adjustmentResult.afterDegas.ions.bicarbonate.toFixed(2),
+          r: (adjustmentResult.final.ions.bicarbonate * cf).toFixed(2),
+        },
+        {
+          label: 'CO₂ (mg/L)',
+          b: adjustmentResult.beforeAdjustment.ions.co2.toFixed(2),
+          a: adjustmentResult.afterDegas.ions.co2.toFixed(2),
+          r: adjustmentResult.final.ions.co2.toFixed(2),
+        },
+        {
+          label: 'CO₃²⁻ (mg/L)',
+          b: adjustmentResult.beforeAdjustment.ions.carbonate.toFixed(2),
+          a: adjustmentResult.afterDegas.ions.carbonate.toFixed(2),
+          r: (adjustmentResult.final.ions.carbonate * cf).toFixed(2),
+        },
+      ]
+    : [
+        { label: 'pH', b: '7.20', a: '11.15', r: '7.15' },
+        { label: 'LSI*', b: '-1.38', a: '0.88', r: '-0.29' },
+        { label: 'Stiff & Davis Index*', b: '-0.24', a: '1.97', r: '0.36' },
+        { label: 'TD Solutes (mg/L)', b: '151.57', a: '94.84', r: '606.26' },
+        { label: 'Ionic Strength (molal)', b: '0.00', a: '0.00', r: '0.01' },
+        { label: 'HCO₃⁻ (mg/L)', b: '80.12', a: '1.56', r: '320.40' },
+        { label: 'CO₂ (mg/L)', b: '8.56', a: '0.00', r: '34.28' },
+        { label: 'CO₃²⁻ (mg/L)', b: '0.07', a: '12.11', r: '0.33' },
+      ];
 
   return (
     <div className='px-6 py-4 lg:px-8 lg:py-6 space-y-6 max-w-[1700px] mx-auto font-sans'>
@@ -311,15 +355,15 @@ export function ROConfigView() {
                     </span>
                   </div>
                   <div className='flex gap-2 items-center'>
-                    <Input
-                      value={feedFlow.toFixed(2)}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        if (!isNaN(val) && val > 0) {
+                    <NumericInput
+                      value={feedFlow}
+                      onChange={(val) => {
+                        if (val > 0) {
                           useROConfigStore.getState().setFeedFlow(val);
                         }
                       }}
-                      className='h-9 bg-slate-100 border-slate-200 focus-visible:ring-primary/20 rounded-sm'
+                      precision={2}
+                      className='h-9 bg-slate-100 border-slate-200 focus-visible:ring-primary/20 rounded-sm text-left px-3'
                     />
                     <span className='text-sm text-slate-500 min-w-[30px]'>
                       m³/h
@@ -445,15 +489,17 @@ export function ROConfigView() {
                       </span>
                     </div>
                     <div className='flex gap-2 items-center'>
-                      <Input
-                        value={displayRecovery.toFixed(2)}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          if (!isNaN(val) && val >= 0 && val <= 100) {
+                      <NumericInput
+                        value={displayRecovery}
+                        onChange={(val) => {
+                          if (val >= 0 && val <= 100) {
                             useROConfigStore.getState().setSystemRecovery(val);
                           }
                         }}
-                        className='h-9 bg-white border-slate-200 focus-visible:ring-primary/20 rounded-sm'
+                        precision={2}
+                        min={0}
+                        max={100}
+                        className='h-9 bg-white border-slate-200 focus-visible:ring-primary/20 rounded-sm text-left px-3'
                       />
                       <span className='text-sm text-slate-500 min-w-[30px]'>
                         %
@@ -718,7 +764,9 @@ export function ROConfigView() {
                     ↓ pH
                   </span>
                   <button
-                    onClick={() => updateChemicalAdjustment({ phDownOn: !phDownOn })}
+                    onClick={() =>
+                      updateChemicalAdjustment({ phDownOn: !phDownOn })
+                    }
                     className={cn(
                       'w-9 h-5 rounded-full relative flex items-center transition-colors border',
                       phDownOn
@@ -747,7 +795,13 @@ export function ROConfigView() {
                   </button>
                 </div>
                 <div className='space-y-3'>
-                  <Select disabled={!phDownOn} value={chemicalAdjustment.phDownChemical} onValueChange={(val) => updateChemicalAdjustment({ phDownChemical: val })}>
+                  <Select
+                    disabled={!phDownOn}
+                    value={chemicalAdjustment.phDownChemical}
+                    onValueChange={(val) =>
+                      updateChemicalAdjustment({ phDownChemical: val })
+                    }
+                  >
                     <SelectTrigger
                       className={cn(
                         'h-8 text-xs',
@@ -764,12 +818,17 @@ export function ROConfigView() {
                     </SelectContent>
                   </Select>
                   <div className='flex items-center bg-background border border-border rounded-md h-8 overflow-hidden w-full'>
-                    <Input
+                    <NumericInput
                       disabled={!phDownOn}
-                      value={chemicalAdjustment.phDownTargetPh || ''}
-                      onChange={(e) => updateChemicalAdjustment({ phDownTargetPh: parseFloat(e.target.value) || 0 })}
+                      value={chemicalAdjustment.phDownTargetPh || 0}
+                      onChange={(val) =>
+                        updateChemicalAdjustment({
+                          phDownTargetPh: val,
+                        })
+                      }
+                      precision={2}
                       className={cn(
-                        'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0',
+                        'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0 text-left',
                         phDownOn ? 'bg-white text-slate-800' : 'bg-slate-50',
                       )}
                     />
@@ -780,7 +839,11 @@ export function ROConfigView() {
                   <div className='flex items-center bg-background border border-border rounded-md h-8 overflow-hidden w-full'>
                     <Input
                       disabled={!phDownOn}
-                      value={phDownOn ? adjustmentResult?.afterAcid.lsi.toFixed(2) : ''}
+                      value={
+                        phDownOn
+                          ? adjustmentResult?.afterAcid.lsi.toFixed(2)
+                          : ''
+                      }
                       readOnly
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0',
@@ -813,7 +876,9 @@ export function ROConfigView() {
                     Degas
                   </span>
                   <button
-                    onClick={() => updateChemicalAdjustment({ degasOn: !degasOn })}
+                    onClick={() =>
+                      updateChemicalAdjustment({ degasOn: !degasOn })
+                    }
                     className={cn(
                       'w-9 h-5 rounded-full relative flex items-center transition-colors border',
                       degasOn
@@ -846,7 +911,9 @@ export function ROConfigView() {
                     <input
                       type='radio'
                       checked={degasMode === 'CO2 % Removal'}
-                      onChange={() => updateChemicalAdjustment({ degasMode: 'CO2 % Removal' })}
+                      onChange={() =>
+                        updateChemicalAdjustment({ degasMode: 'CO2 % Removal' })
+                      }
                       className='accent-primary w-3.5 h-3.5 cursor-pointer disabled:opacity-50'
                       disabled={!degasOn}
                     />
@@ -857,12 +924,21 @@ export function ROConfigView() {
                       </span>
                     </div>
                     <div className='flex items-center border border-border rounded-md h-7 overflow-hidden w-[65px]'>
-                      <Input
+                      <NumericInput
                         disabled={!degasOn || degasMode !== 'CO2 % Removal'}
-                        value={degasMode === 'CO2 % Removal' ? chemicalAdjustment.degasValue || '' : ''}
-                        onChange={(e) => updateChemicalAdjustment({ degasValue: parseFloat(e.target.value) || 0 })}
+                        value={
+                          degasMode === 'CO2 % Removal'
+                            ? chemicalAdjustment.degasValue || 0
+                            : 0
+                        }
+                        onChange={(val) =>
+                          updateChemicalAdjustment({
+                            degasValue: val,
+                          })
+                        }
+                        precision={1}
                         className={cn(
-                          'h-full flex-1 border-0 rounded-none text-xs font-mono px-1.5 text-right focus-visible:ring-0',
+                          'h-full flex-1 border-0 rounded-none text-xs font-mono px-1.5 focus-visible:ring-0 text-right',
                           degasOn && degasMode === 'CO2 % Removal'
                             ? 'bg-white text-slate-800'
                             : 'bg-slate-50',
@@ -877,7 +953,11 @@ export function ROConfigView() {
                     <input
                       type='radio'
                       checked={degasMode === 'CO2 Partial Pressure'}
-                      onChange={() => updateChemicalAdjustment({ degasMode: 'CO2 Partial Pressure' })}
+                      onChange={() =>
+                        updateChemicalAdjustment({
+                          degasMode: 'CO2 Partial Pressure',
+                        })
+                      }
                       className='accent-primary w-3.5 h-3.5 cursor-pointer disabled:opacity-50'
                       disabled={!degasOn}
                     />
@@ -889,14 +969,23 @@ export function ROConfigView() {
                       </span>
                     </div>
                     <div className='flex items-center border border-border rounded-md h-7 overflow-hidden w-[65px]'>
-                      <Input
+                      <NumericInput
                         disabled={
                           !degasOn || degasMode !== 'CO2 Partial Pressure'
                         }
-                        value={degasMode === 'CO2 Partial Pressure' ? chemicalAdjustment.degasValue || '' : ''}
-                        onChange={(e) => updateChemicalAdjustment({ degasValue: parseFloat(e.target.value) || 0 })}
+                        value={
+                          degasMode === 'CO2 Partial Pressure'
+                            ? chemicalAdjustment.degasValue || 0
+                            : 0
+                        }
+                        onChange={(val) =>
+                          updateChemicalAdjustment({
+                            degasValue: val,
+                          })
+                        }
+                        precision={1}
                         className={cn(
-                          'h-full flex-1 border-0 rounded-none text-xs font-mono px-1.5 text-right focus-visible:ring-0',
+                          'h-full flex-1 border-0 rounded-none text-xs font-mono px-1.5 focus-visible:ring-0 text-right',
                           degasOn && degasMode === 'CO2 Partial Pressure'
                             ? 'bg-white text-slate-800'
                             : 'bg-slate-50',
@@ -912,7 +1001,11 @@ export function ROConfigView() {
                       <input
                         type='radio'
                         checked={degasMode === 'CO2 Concentration'}
-                        onChange={() => updateChemicalAdjustment({ degasMode: 'CO2 Concentration' })}
+                        onChange={() =>
+                          updateChemicalAdjustment({
+                            degasMode: 'CO2 Concentration',
+                          })
+                        }
                         className='accent-primary w-3.5 h-3.5 cursor-pointer disabled:opacity-50'
                         disabled={!degasOn}
                       />
@@ -926,14 +1019,23 @@ export function ROConfigView() {
                     </div>
                     <div className='flex flex-col items-end w-[65px]'>
                       <div className='flex items-center border border-border rounded-md h-7 overflow-hidden w-full'>
-                        <Input
+                        <NumericInput
                           disabled={
                             !degasOn || degasMode !== 'CO2 Concentration'
                           }
-                          value={degasMode === 'CO2 Concentration' ? chemicalAdjustment.degasValue || '' : ''}
-                          onChange={(e) => updateChemicalAdjustment({ degasValue: parseFloat(e.target.value) || 0 })}
+                          value={
+                            degasMode === 'CO2 Concentration'
+                              ? chemicalAdjustment.degasValue || 0
+                              : 0
+                          }
+                          onChange={(val) =>
+                            updateChemicalAdjustment({
+                              degasValue: val,
+                            })
+                          }
+                          precision={2}
                           className={cn(
-                            'h-full flex-1 border-0 rounded-none text-xs font-mono px-1 text-right focus-visible:ring-0',
+                            'h-full flex-1 border-0 rounded-none text-xs font-mono px-1 focus-visible:ring-0 text-right',
                             degasOn && degasMode === 'CO2 Concentration'
                               ? 'bg-white text-slate-800'
                               : 'bg-slate-50',
@@ -970,7 +1072,9 @@ export function ROConfigView() {
                     ↑ pH
                   </span>
                   <button
-                    onClick={() => updateChemicalAdjustment({ phUpOn: !phUpOn })}
+                    onClick={() =>
+                      updateChemicalAdjustment({ phUpOn: !phUpOn })
+                    }
                     className={cn(
                       'w-9 h-5 rounded-full relative flex items-center transition-colors border',
                       phUpOn
@@ -999,7 +1103,13 @@ export function ROConfigView() {
                   </button>
                 </div>
                 <div className='space-y-3'>
-                  <Select disabled={!phUpOn} value={chemicalAdjustment.phUpChemical} onValueChange={(val) => updateChemicalAdjustment({ phUpChemical: val })}>
+                  <Select
+                    disabled={!phUpOn}
+                    value={chemicalAdjustment.phUpChemical}
+                    onValueChange={(val) =>
+                      updateChemicalAdjustment({ phUpChemical: val })
+                    }
+                  >
                     <SelectTrigger
                       className={cn(
                         'h-8 text-xs',
@@ -1015,12 +1125,17 @@ export function ROConfigView() {
                     </SelectContent>
                   </Select>
                   <div className='flex items-center bg-background border border-border rounded-md h-8 overflow-hidden w-full'>
-                    <Input
+                    <NumericInput
                       disabled={!phUpOn}
-                      value={chemicalAdjustment.phUpTargetPh || ''}
-                      onChange={(e) => updateChemicalAdjustment({ phUpTargetPh: parseFloat(e.target.value) || 0 })}
+                      value={chemicalAdjustment.phUpTargetPh || 0}
+                      onChange={(val) =>
+                        updateChemicalAdjustment({
+                          phUpTargetPh: val,
+                        })
+                      }
+                      precision={2}
                       className={cn(
-                        'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0',
+                        'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0 text-left',
                         phUpOn ? 'bg-white text-slate-800' : 'bg-slate-50',
                       )}
                     />
@@ -1031,7 +1146,9 @@ export function ROConfigView() {
                   <div className='flex items-center bg-background border border-border rounded-md h-8 overflow-hidden w-full'>
                     <Input
                       disabled={!phUpOn}
-                      value={phUpOn ? adjustmentResult?.final.lsi.toFixed(2) : ''}
+                      value={
+                        phUpOn ? adjustmentResult?.final.lsi.toFixed(2) : ''
+                      }
                       readOnly
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0',
@@ -1064,7 +1181,11 @@ export function ROConfigView() {
                     Anti-Scalant
                   </span>
                   <button
-                    onClick={() => updateChemicalAdjustment({ antiScalantOn: !antiScalantOn })}
+                    onClick={() =>
+                      updateChemicalAdjustment({
+                        antiScalantOn: !antiScalantOn,
+                      })
+                    }
                     className={cn(
                       'w-9 h-5 rounded-full relative flex items-center transition-colors border',
                       antiScalantOn
@@ -1096,7 +1217,9 @@ export function ROConfigView() {
                   <Select
                     disabled={!antiScalantOn}
                     value={chemicalAdjustment.antiScalantChemical}
-                    onValueChange={(val) => updateChemicalAdjustment({ antiScalantChemical: val })}
+                    onValueChange={(val) =>
+                      updateChemicalAdjustment({ antiScalantChemical: val })
+                    }
                   >
                     <SelectTrigger
                       className={cn(
@@ -1115,12 +1238,17 @@ export function ROConfigView() {
                     </SelectContent>
                   </Select>
                   <div className='flex items-center bg-background border border-border rounded-md h-8 overflow-hidden w-full'>
-                    <Input
+                    <NumericInput
                       disabled={!antiScalantOn}
-                      value={chemicalAdjustment.antiScalantDose || ''}
-                      onChange={(e) => updateChemicalAdjustment({ antiScalantDose: parseFloat(e.target.value) || 0 })}
+                      value={chemicalAdjustment.antiScalantDose || 0}
+                      onChange={(val) =>
+                        updateChemicalAdjustment({
+                          antiScalantDose: val,
+                        })
+                      }
+                      precision={2}
                       className={cn(
-                        'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0',
+                        'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0 text-left',
                         antiScalantOn
                           ? 'bg-white text-slate-800'
                           : 'bg-slate-50',
@@ -1152,7 +1280,11 @@ export function ROConfigView() {
                     Dechlorinator
                   </span>
                   <button
-                    onClick={() => updateChemicalAdjustment({ dechlorinatorOn: !dechlorinatorOn })}
+                    onClick={() =>
+                      updateChemicalAdjustment({
+                        dechlorinatorOn: !dechlorinatorOn,
+                      })
+                    }
                     className={cn(
                       'w-9 h-5 rounded-full relative flex items-center transition-colors border',
                       dechlorinatorOn
@@ -1181,7 +1313,13 @@ export function ROConfigView() {
                   </button>
                 </div>
                 <div className='space-y-3'>
-                  <Select disabled={!dechlorinatorOn} value={chemicalAdjustment.dechlorinatorChemical} onValueChange={(val) => updateChemicalAdjustment({ dechlorinatorChemical: val })}>
+                  <Select
+                    disabled={!dechlorinatorOn}
+                    value={chemicalAdjustment.dechlorinatorChemical}
+                    onValueChange={(val) =>
+                      updateChemicalAdjustment({ dechlorinatorChemical: val })
+                    }
+                  >
                     <SelectTrigger
                       className={cn(
                         'h-8 text-xs',
@@ -1197,12 +1335,17 @@ export function ROConfigView() {
                     </SelectContent>
                   </Select>
                   <div className='flex items-center bg-background border border-border rounded-md h-8 overflow-hidden w-full'>
-                    <Input
+                    <NumericInput
                       disabled={!dechlorinatorOn}
-                      value={chemicalAdjustment.dechlorinatorDose || ''}
-                      onChange={(e) => updateChemicalAdjustment({ dechlorinatorDose: parseFloat(e.target.value) || 0 })}
+                      value={chemicalAdjustment.dechlorinatorDose || 0}
+                      onChange={(val) =>
+                        updateChemicalAdjustment({
+                          dechlorinatorDose: val,
+                        })
+                      }
+                      precision={2}
                       className={cn(
-                        'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0',
+                        'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0 text-left',
                         dechlorinatorOn
                           ? 'bg-white text-slate-800'
                           : 'bg-slate-50',
@@ -1403,7 +1546,16 @@ export function ROConfigView() {
               feedTDS={displayFeedTDS}
               permeateTDS={livePermeateTDS ?? projectData.permeateTDS}
               rejectTDS={projectData.rejectTDS}
-              stages={activeStages}
+              passes={passes.map(
+                (passId, passIdx): PassConfig => ({
+                  label: `Pass ${passIdx + 1}`,
+                  recovery: passRecovery[passId] ?? storeRecovery,
+                  stages: (passData[passId] || []).map((stg) => ({
+                    vessels: stg.vessels,
+                    elements: stg.elements,
+                  })),
+                }),
+              )}
             />
           </div>
         )}
@@ -1417,15 +1569,23 @@ export function ROConfigView() {
               <button
                 onClick={() => setActivePass(p)}
                 className={cn(
-                  'px-6 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all duration-300 relative',
+                  'px-5 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all duration-200 relative flex flex-col items-center gap-0.5',
                   activePass === p
-                    ? 'bg-white text-primary shadow-sm ring-1 ring-black/5'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-white/50',
+                    ? 'bg-white text-primary shadow-md ring-1 ring-primary/20 border border-primary/10'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-white/60',
                 )}
               >
-                Pass {i + 1}
+                <span>Pass {i + 1}</span>
+                <span
+                  className={cn(
+                    'text-[9px] font-mono leading-none',
+                    activePass === p ? 'text-primary/70' : 'text-slate-400',
+                  )}
+                >
+                  {(passRecovery[p] ?? storeRecovery).toFixed(0)}%
+                </span>
               </button>
-              {passes.length > 1 && activePass === p && (
+              {passes.length > 1 && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1520,6 +1680,86 @@ export function ROConfigView() {
           </div>
 
           <div className='space-y-6'>
+            {/* Per-pass Recovery */}
+            <div className='space-y-2'>
+              <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
+                Pass Recovery
+              </div>
+              <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all'>
+                <input
+                  type='number'
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={passRecovery[activePass] ?? storeRecovery}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0 && val <= 100) {
+                      setPassRecovery((prev) => ({
+                        ...prev,
+                        [activePass]: val,
+                      }));
+                      if (passes.length === 1) {
+                        useROConfigStore.getState().setSystemRecovery(val);
+                      }
+                    }
+                  }}
+                  className='h-full flex-1 border-0 rounded-none text-sm font-mono font-bold bg-transparent focus:outline-none px-3 text-primary'
+                />
+                <div className='px-2.5 h-full flex items-center bg-muted/20 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
+                  %
+                </div>
+              </div>
+            </div>
+
+            {/* Per-pass Flow Factor */}
+            <div className='space-y-2'>
+              <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
+                Flow Factor
+              </div>
+              <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all'>
+                <input
+                  type='number'
+                  min={0.01}
+                  max={1}
+                  step={0.01}
+                  value={passFlowFactor[activePass] ?? 0.85}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val > 0 && val <= 1) {
+                      setPassFlowFactor((prev) => ({
+                        ...prev,
+                        [activePass]: val,
+                      }));
+                    }
+                  }}
+                  className='h-full flex-1 border-0 rounded-none text-sm font-mono font-bold bg-transparent focus:outline-none px-3 text-foreground'
+                />
+              </div>
+            </div>
+
+            {/* Per-pass Permeate Back Pressure */}
+            <div className='space-y-2'>
+              <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
+                Permeate Back Pressure
+              </div>
+              <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all'>
+                <Input
+                  value={storePermeatePressure.toFixed(2)}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0) {
+                      useROConfigStore.getState().setPermeatePressureBar(val);
+                    }
+                  }}
+                  className='h-full flex-1 border-0 rounded-none text-sm font-mono font-bold bg-transparent focus-visible:ring-0 px-3 text-foreground'
+                />
+                <div className='px-2.5 h-full flex items-center bg-muted/20 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
+                  BAR
+                </div>
+              </div>
+            </div>
+
             <div className='space-y-3'>
               <div className='flex justify-between items-center'>
                 <span className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
@@ -1548,47 +1788,14 @@ export function ROConfigView() {
               </div>
             </div>
 
-            <div className='grid grid-cols-2 gap-4'>
-              <div className='space-y-2'>
-                <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
-                  Flow Factor
-                </div>
-                <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all'>
-                  <Input
-                    defaultValue='0.85'
-                    className='h-full flex-1 border-0 rounded-none text-sm font-mono font-bold bg-transparent focus-visible:ring-0 px-3 text-foreground'
-                  />
-                </div>
-              </div>
-              <div className='space-y-2'>
-                <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
-                  Temp Correction
-                </div>
-                <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden'>
-                  <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-muted-foreground'>
-                    1.024
-                  </div>
-                </div>
-              </div>
-            </div>
-
+            {/* Temp Correction (read-only) */}
             <div className='space-y-2'>
               <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
-                Permeate Back Pressure
+                Temp Correction
               </div>
-              <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all'>
-                <Input
-                  value={storePermeatePressure.toFixed(2)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val) && val >= 0) {
-                      useROConfigStore.getState().setPermeatePressureBar(val);
-                    }
-                  }}
-                  className='h-full flex-1 border-0 rounded-none text-sm font-mono font-bold bg-transparent focus-visible:ring-0 px-3 text-foreground'
-                />
-                <div className='px-2.5 h-full flex items-center bg-muted/20 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
-                  BAR
+              <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden'>
+                <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-muted-foreground'>
+                  1.024
                 </div>
               </div>
             </div>
@@ -1831,7 +2038,6 @@ export function ROConfigView() {
           </div>
         </Card>
       </div>
-
 
       {/* ── Systems Stages Configuration Table ── */}
       <Card className='mt-6 border-border/60 shadow-xl shadow-slate-200/50 overflow-hidden bg-white rounded-2xl'>

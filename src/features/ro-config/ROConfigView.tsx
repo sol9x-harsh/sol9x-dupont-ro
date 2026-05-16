@@ -156,19 +156,22 @@ export function ROConfigView() {
   const storeRecovery = useROConfigStore((s) => s.systemRecovery);
   const storePressure = useROConfigStore((s) => s.feedPressureBar);
   const storePermeatePressure = useROConfigStore((s) => s.permeatePressureBar);
-  const { 
-    passOptimizationMode, 
-    bypassMode, 
-    bypassValue, 
+  const {
+    passOptimizationMode,
+    bypassMode,
+    bypassValue,
     concentrateRecycle,
-    setPassOptimizationMode, 
-    setBypassMode, 
-    setBypassValue, 
-    setConcentrateRecycle 
+    setPassOptimizationMode,
+    setBypassMode,
+    setBypassValue,
+    setConcentrateRecycle,
   } = useROConfigStore();
-  const bypassFlow = passOptimizationMode === 'Bypass'
-    ? (bypassMode === 'Percent' ? feedFlow * bypassValue / 100 : bypassValue)
-    : 0;
+  const bypassFlow =
+    passOptimizationMode === 'Bypass'
+      ? bypassMode === 'Percent'
+        ? (feedFlow * bypassValue) / 100
+        : bypassValue
+      : 0;
 
   const liveRecovery = useSimulationStore(selectSystemRecoveryPercent);
   const livePermeateFlow = useSimulationStore(selectTotalPermeateFlow);
@@ -191,21 +194,29 @@ export function ROConfigView() {
   const updateFeedField = useFeedStore((s) => s.updateChemistryField);
 
   // Live feed chemistry — subscribed directly so the chem adj table always reflects real data.
-  const feedIons          = useFeedStore((s) => s.chemistry.ions);
-  const feedPh            = useFeedStore((s) => s.chemistry.ph);
-  const feedMinTemp       = useFeedStore((s) => s.chemistry.minTemperature);
-  const feedDesignTemp    = useFeedStore((s) => s.chemistry.designTemperature);
-  const feedMaxTemp       = useFeedStore((s) => s.chemistry.maxTemperature);
+  const feedIons = useFeedStore((s) => s.chemistry.ions);
+  const feedPh = useFeedStore((s) => s.chemistry.ph);
+  const feedMinTemp = useFeedStore((s) => s.chemistry.minTemperature);
+  const feedDesignTemp = useFeedStore((s) => s.chemistry.designTemperature);
+  const feedMaxTemp = useFeedStore((s) => s.chemistry.maxTemperature);
 
   const systemTemperature =
-    activeTempView === 'min' ? feedMinTemp :
-    activeTempView === 'max' ? feedMaxTemp :
-    feedDesignTemp;
+    activeTempView === 'min'
+      ? feedMinTemp
+      : activeTempView === 'max'
+        ? feedMaxTemp
+        : feedDesignTemp;
 
   // Always-live adjustment result — derived from the actual feed store, not the simulation output.
   // This means the chemistry table is correct even before the main simulation has run.
-  const liveAdjustmentResult = useMemo(() =>
-    simulateChemicalAdjustment(feedIons, feedPh, systemTemperature, chemicalAdjustment),
+  const liveAdjustmentResult = useMemo(
+    () =>
+      simulateChemicalAdjustment(
+        feedIons,
+        feedPh,
+        systemTemperature,
+        chemicalAdjustment,
+      ),
     [feedIons, feedPh, systemTemperature, chemicalAdjustment],
   );
 
@@ -218,6 +229,104 @@ export function ROConfigView() {
   const displayFeedTDS = liveFeedTDS ?? projectData.feedTDS;
   const displayFeedPressure =
     livePressures?.stages[0]?.inletPressureBar ?? storePressure;
+
+  const passMetrics = useMemo(() => {
+    let currentFeed = feedFlow;
+    let currentTDS = liveFeedTDS ?? projectData.feedTDS;
+    let pPermeate = 0;
+    let pConcentrate = 0;
+    let pRecovery = 0;
+
+    const targetIdx = passes.indexOf(activePass);
+
+    // Global stage offset for indexing into simulation stage arrays
+    let startStageIdx = 0;
+    for (let i = 0; i < targetIdx; i++) {
+      startStageIdx += passData[passes[i]]?.length || 0;
+    }
+    const passStageCount = passData[activePass]?.length || 0;
+
+    // Salt passage rate derived from actual simulated rejection; clamp to realistic range
+    const rejectionPct = Math.min(99.9, Math.max(50, liveRejection ?? 99));
+    const saltPassage = (100 - rejectionPct) / 100;
+
+    for (let i = 0; i <= targetIdx; i++) {
+      const pId = passes[i];
+      pRecovery = passRecovery[pId] ?? storeRecovery;
+      pPermeate = currentFeed * (pRecovery / 100);
+      pConcentrate = currentFeed - pPermeate;
+
+      if (i < targetIdx) {
+        // Next pass feed = this pass permeate flow
+        currentFeed = pPermeate;
+        // Next pass feed TDS = this pass permeate TDS = feedTDS × salt-passage; min 1 mg/L
+        currentTDS = Math.max(1, currentTDS * saltPassage);
+      }
+    }
+
+    // Avg Flux — use simulation per-stage fluxLMH when available; fall back to area formula
+    let pAvgFlux = 0;
+    if (simOutput?.hydraulics?.flux?.stages) {
+      const stageFluxValues: number[] = [];
+      for (let j = startStageIdx; j < startStageIdx + passStageCount; j++) {
+        const f = simOutput.hydraulics.flux.stages[j]?.fluxLMH;
+        if (f != null && Number.isFinite(f)) stageFluxValues.push(f);
+      }
+      if (stageFluxValues.length > 0) {
+        pAvgFlux = stageFluxValues.reduce((a, b) => a + b, 0) / stageFluxValues.length;
+      }
+    }
+    if (pAvgFlux === 0) {
+      // Area-based fallback: LMH = (m³/h × 1000 L/m³) / m²
+      let totalArea = 0;
+      (passData[activePass] || []).forEach((stg) => {
+        totalArea += Math.max(1, stg.vessels) * Math.max(1, stg.elements) * 37.16;
+      });
+      pAvgFlux = totalArea > 0 ? (pPermeate * 1000) / totalArea : 0;
+    }
+
+    // Feed pressure from simulation pressure propagation for this pass's first stage
+    let pFeedPressure = storePressure;
+    if (livePressures?.stages?.[startStageIdx]) {
+      pFeedPressure = livePressures.stages[startStageIdx].inletPressureBar;
+    }
+
+    // Lowest NDP — correct property path is .ndp.ndpBar (not .lowestNDPBar)
+    // Each pass uses only its own stage slice so values differ per pass
+    let pLowestNDP = 0;
+    if (simOutput?.hydraulics?.ndp?.stages) {
+      let lowest = Infinity;
+      for (let j = startStageIdx; j < startStageIdx + passStageCount; j++) {
+        const ndpBar = simOutput.hydraulics.ndp.stages[j]?.ndp?.ndpBar;
+        if (ndpBar != null && Number.isFinite(ndpBar) && ndpBar < lowest) lowest = ndpBar;
+      }
+      if (lowest !== Infinity) pLowestNDP = lowest;
+    }
+
+    return {
+      feedFlow: currentFeed,
+      feedTDS: Math.max(1, currentTDS),
+      recovery: pRecovery,
+      permeateFlow: pPermeate,
+      concentrateFlow: pConcentrate,
+      avgFlux: pAvgFlux,
+      feedPressure: pFeedPressure,
+      lowestNDP: pLowestNDP,
+    };
+  }, [
+    activePass,
+    passes,
+    passRecovery,
+    storeRecovery,
+    feedFlow,
+    projectData.feedTDS,
+    liveFeedTDS,
+    liveRejection,
+    passData,
+    simOutput,
+    livePressures,
+    storePressure,
+  ]);
 
   // Sync Logic: Increase/Decrease rows with Pass additions/deletions
   const addPass = () => {
@@ -237,7 +346,7 @@ export function ROConfigView() {
         },
       ],
     });
-    setPassRecovery((prev) => ({ ...prev, [id]: storeRecovery }));
+    setPassRecovery((prev) => ({ ...prev, [id]: 90 }));
     setPassFlowFactor((prev) => ({ ...prev, [id]: 0.85 }));
     setActivePass(id);
   };
@@ -277,17 +386,9 @@ export function ROConfigView() {
     syncToStore();
   }, [syncToStore]);
 
-  // If global system recovery changes (e.g. from Flow Calculator), update the first pass if it's the only one.
-  useEffect(() => {
-    if (passes.length === 1) {
-      setPassRecovery((prev) => {
-        if (prev.p1 !== storeRecovery) {
-          return { ...prev, p1: storeRecovery };
-        }
-        return prev;
-      });
-    }
-  }, [storeRecovery, passes.length]);
+  // Intentionally not syncing storeRecovery into p1 — pass 1 defaults to 75% and
+  // is edited independently per-pass. storeRecovery is used only for hydraulic
+  // calculations in the flow calculator panel.
 
   const addStage = () => {
     if (activeStages.length >= 6) return; // limit to 6 stages to prevent insane geometry, but way above 3
@@ -326,59 +427,59 @@ export function ROConfigView() {
   const tableData = [
     {
       label: 'pH',
-      b:  adj.beforeAdjustment.ph.toFixed(2),
+      b: adj.beforeAdjustment.ph.toFixed(2),
       ac: adj.afterAcid.ph.toFixed(2),
-      a:  adj.afterDegas.ph.toFixed(2),
-      r:  adj.final.ph.toFixed(2),
+      a: adj.afterDegas.ph.toFixed(2),
+      r: adj.final.ph.toFixed(2),
     },
     {
       label: 'LSI*',
-      b:  adj.beforeAdjustment.lsi.toFixed(2),
+      b: adj.beforeAdjustment.lsi.toFixed(2),
       ac: adj.afterAcid.lsi.toFixed(2),
-      a:  adj.afterDegas.lsi.toFixed(2),
-      r:  (adj.final.lsi + Math.log10(Math.max(cf, 1))).toFixed(2),
+      a: adj.afterDegas.lsi.toFixed(2),
+      r: (adj.final.lsi + Math.log10(Math.max(cf, 1))).toFixed(2),
     },
     {
       label: 'S&DSI*',
-      b:  adj.beforeAdjustment.sdi.toFixed(2),
+      b: adj.beforeAdjustment.sdi.toFixed(2),
       ac: adj.afterAcid.sdi.toFixed(2),
-      a:  adj.afterDegas.sdi.toFixed(2),
-      r:  (adj.final.sdi + Math.log10(Math.max(cf, 1))).toFixed(2),
+      a: adj.afterDegas.sdi.toFixed(2),
+      r: (adj.final.sdi + Math.log10(Math.max(cf, 1))).toFixed(2),
     },
     {
       label: 'TDS (mg/L)',
-      b:  adj.beforeAdjustment.tds.toFixed(1),
+      b: adj.beforeAdjustment.tds.toFixed(1),
       ac: adj.afterAcid.tds.toFixed(1),
-      a:  adj.afterDegas.tds.toFixed(1),
-      r:  (adj.final.tds * cf).toFixed(1),
+      a: adj.afterDegas.tds.toFixed(1),
+      r: (adj.final.tds * cf).toFixed(1),
     },
     {
       label: 'Ionic Str. (mol/L)',
-      b:  adj.beforeAdjustment.ionicStrength.toFixed(4),
+      b: adj.beforeAdjustment.ionicStrength.toFixed(4),
       ac: adj.afterAcid.ionicStrength.toFixed(4),
-      a:  adj.afterDegas.ionicStrength.toFixed(4),
-      r:  (adj.final.ionicStrength * cf).toFixed(4),
+      a: adj.afterDegas.ionicStrength.toFixed(4),
+      r: (adj.final.ionicStrength * cf).toFixed(4),
     },
     {
       label: 'HCO₃⁻ (mg/L)',
-      b:  adj.beforeAdjustment.ions.bicarbonate.toFixed(2),
+      b: adj.beforeAdjustment.ions.bicarbonate.toFixed(2),
       ac: adj.afterAcid.ions.bicarbonate.toFixed(2),
-      a:  adj.afterDegas.ions.bicarbonate.toFixed(2),
-      r:  (adj.final.ions.bicarbonate * cf).toFixed(2),
+      a: adj.afterDegas.ions.bicarbonate.toFixed(2),
+      r: (adj.final.ions.bicarbonate * cf).toFixed(2),
     },
     {
       label: 'CO₂ (mg/L)',
-      b:  adj.beforeAdjustment.ions.co2.toFixed(2),
+      b: adj.beforeAdjustment.ions.co2.toFixed(2),
       ac: adj.afterAcid.ions.co2.toFixed(2),
-      a:  adj.afterDegas.ions.co2.toFixed(2),
-      r:  adj.final.ions.co2.toFixed(2),
+      a: adj.afterDegas.ions.co2.toFixed(2),
+      r: adj.final.ions.co2.toFixed(2),
     },
     {
       label: 'CO₃²⁻ (mg/L)',
-      b:  adj.beforeAdjustment.ions.carbonate.toFixed(2),
+      b: adj.beforeAdjustment.ions.carbonate.toFixed(2),
       ac: adj.afterAcid.ions.carbonate.toFixed(2),
-      a:  adj.afterDegas.ions.carbonate.toFixed(2),
-      r:  (adj.final.ions.carbonate * cf).toFixed(2),
+      a: adj.afterDegas.ions.carbonate.toFixed(2),
+      r: (adj.final.ions.carbonate * cf).toFixed(2),
     },
   ];
 
@@ -654,7 +755,9 @@ export function ROConfigView() {
                         className='h-9 bg-slate-200/60 border-transparent text-muted-foreground rounded-sm'
                       />
                       <div className='h-9 bg-slate-200/60 px-2 flex items-center justify-center rounded-sm'>
-                        <span className='text-sm text-muted-foreground'>LMH</span>
+                        <span className='text-sm text-muted-foreground'>
+                          LMH
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -666,8 +769,10 @@ export function ROConfigView() {
                       for (let i = 0; i <= idx; i++) {
                         cumulativeIdx += (passData[passes[i]] || []).length;
                       }
-                      const pFlow = simOutput?.hydraulics?.flows?.stages[cumulativeIdx]?.concentrateFlowM3h ?? 0;
-                      
+                      const pFlow =
+                        simOutput?.hydraulics?.flows?.stages[cumulativeIdx]
+                          ?.concentrateFlowM3h ?? 0;
+
                       return (
                         <div key={`flow-conc-${pId}`}>
                           <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
@@ -706,9 +811,9 @@ export function ROConfigView() {
                         onClick={() => setActiveRecyclePass(pId)}
                         className={cn(
                           'px-3 py-1 text-[10px] font-bold rounded border transition-all',
-                          activeRecyclePass === pId 
-                            ? 'bg-primary/10 border-primary text-primary shadow-sm' 
-                            : 'bg-slate-50 border-slate-200 text-muted-foreground hover:border-slate-300'
+                          activeRecyclePass === pId
+                            ? 'bg-primary/10 border-primary text-primary shadow-sm'
+                            : 'bg-slate-50 border-slate-200 text-muted-foreground hover:border-slate-300',
                         )}
                       >
                         Pass {idx + 1}
@@ -717,14 +822,20 @@ export function ROConfigView() {
                   </div>
 
                   {(() => {
-                    const currentRecycle = concentrateRecycle[activeRecyclePass] || { enabled: false, mode: 'Percent', value: 0 };
+                    const currentRecycle = concentrateRecycle[
+                      activeRecyclePass
+                    ] || { enabled: false, mode: 'Percent', value: 0 };
                     return (
                       <div className='space-y-5 animate-in fade-in slide-in-from-top-1 duration-200'>
                         <div className='flex items-center gap-2'>
                           <input
                             type='checkbox'
                             checked={currentRecycle.enabled}
-                            onChange={(e) => setConcentrateRecycle(activeRecyclePass, { enabled: e.target.checked })}
+                            onChange={(e) =>
+                              setConcentrateRecycle(activeRecyclePass, {
+                                enabled: e.target.checked,
+                              })
+                            }
                             className='accent-primary w-4 h-4 rounded-sm border-slate-300 cursor-pointer'
                           />
                           <span className='text-sm font-medium text-foreground/90'>
@@ -738,44 +849,74 @@ export function ROConfigView() {
                               type='radio'
                               name={`recycleMode-${activeRecyclePass}`}
                               checked={currentRecycle.mode === 'Percent'}
-                              onChange={() => setConcentrateRecycle(activeRecyclePass, { mode: 'Percent' })}
+                              onChange={() =>
+                                setConcentrateRecycle(activeRecyclePass, {
+                                  mode: 'Percent',
+                                })
+                              }
                               disabled={!currentRecycle.enabled}
                               className='w-4 h-4 accent-primary cursor-pointer disabled:opacity-50'
                             />
                             <NumericInput
-                              disabled={!currentRecycle.enabled || currentRecycle.mode !== 'Percent'}
-                              value={currentRecycle.mode === 'Percent' ? currentRecycle.value : 0}
+                              disabled={
+                                !currentRecycle.enabled ||
+                                currentRecycle.mode !== 'Percent'
+                              }
+                              value={
+                                currentRecycle.mode === 'Percent'
+                                  ? currentRecycle.value
+                                  : 0
+                              }
                               onChange={(val) => {
                                 if (val >= 0 && val <= 100) {
-                                  setConcentrateRecycle(activeRecyclePass, { value: val });
+                                  setConcentrateRecycle(activeRecyclePass, {
+                                    value: val,
+                                  });
                                 }
                               }}
                               precision={2}
                               className='h-9 bg-slate-50 border-slate-200 text-foreground/90 flex-1 rounded-sm px-2 disabled:opacity-50 font-mono text-xs'
                             />
-                            <span className='text-sm text-muted-foreground w-[20px]'>%</span>
+                            <span className='text-sm text-muted-foreground w-[20px]'>
+                              %
+                            </span>
                           </div>
                           <div className='flex items-center gap-2 flex-1'>
                             <input
                               type='radio'
                               name={`recycleMode-${activeRecyclePass}`}
                               checked={currentRecycle.mode === 'Flow'}
-                              onChange={() => setConcentrateRecycle(activeRecyclePass, { mode: 'Flow' })}
+                              onChange={() =>
+                                setConcentrateRecycle(activeRecyclePass, {
+                                  mode: 'Flow',
+                                })
+                              }
                               disabled={!currentRecycle.enabled}
                               className='w-4 h-4 accent-primary cursor-pointer disabled:opacity-50'
                             />
                             <NumericInput
-                              disabled={!currentRecycle.enabled || currentRecycle.mode !== 'Flow'}
-                              value={currentRecycle.mode === 'Flow' ? currentRecycle.value : 0}
+                              disabled={
+                                !currentRecycle.enabled ||
+                                currentRecycle.mode !== 'Flow'
+                              }
+                              value={
+                                currentRecycle.mode === 'Flow'
+                                  ? currentRecycle.value
+                                  : 0
+                              }
                               onChange={(val) => {
                                 if (val >= 0) {
-                                  setConcentrateRecycle(activeRecyclePass, { value: val });
+                                  setConcentrateRecycle(activeRecyclePass, {
+                                    value: val,
+                                  });
                                 }
                               }}
                               precision={2}
                               className='h-9 bg-slate-50 border-slate-200 text-foreground/90 flex-1 rounded-sm px-2 disabled:opacity-50 font-mono text-xs'
                             />
-                            <span className='text-sm text-muted-foreground w-[30px] text-[10px]'>m³/h</span>
+                            <span className='text-sm text-muted-foreground w-[30px] text-[10px]'>
+                              m³/h
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1003,7 +1144,9 @@ export function ROConfigView() {
                       precision={2}
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0 text-left',
-                        phDownOn ? 'bg-white text-foreground/80' : 'bg-slate-50',
+                        phDownOn
+                          ? 'bg-white text-foreground/80'
+                          : 'bg-slate-50',
                       )}
                     />
                     <div className='px-2 text-[10px] text-muted-foreground border-l border-border bg-muted/20 h-full flex items-center font-bold'>
@@ -1021,7 +1164,9 @@ export function ROConfigView() {
                       readOnly
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0',
-                        phDownOn ? 'bg-white text-foreground/80' : 'bg-slate-50',
+                        phDownOn
+                          ? 'bg-white text-foreground/80'
+                          : 'bg-slate-50',
                       )}
                     />
                     <div className='px-2 text-[10px] text-muted-foreground border-l border-border bg-muted/20 h-full flex items-center font-bold'>
@@ -1349,7 +1494,9 @@ export function ROConfigView() {
                   <span
                     className={cn(
                       'text-sm font-bold',
-                      antiScalantOn ? 'text-primary' : 'text-muted-foreground/90',
+                      antiScalantOn
+                        ? 'text-primary'
+                        : 'text-muted-foreground/90',
                     )}
                   >
                     Anti-Scalant
@@ -1448,7 +1595,9 @@ export function ROConfigView() {
                   <span
                     className={cn(
                       'text-sm font-bold',
-                      dechlorinatorOn ? 'text-primary' : 'text-muted-foreground/90',
+                      dechlorinatorOn
+                        ? 'text-primary'
+                        : 'text-muted-foreground/90',
                     )}
                   >
                     Dechlorinator
@@ -1548,46 +1697,69 @@ export function ROConfigView() {
                         <th className='py-3 px-4 text-primary'>After Degas</th>
                       )}
                       {phUpOn && (
-                        <th className='py-3 px-4 text-emerald-600'>After Base</th>
+                        <th className='py-3 px-4 text-emerald-600'>
+                          After Base
+                        </th>
                       )}
-                      <th className='py-3 px-4 text-muted-foreground'>Concentrate</th>
+                      <th className='py-3 px-4 text-muted-foreground'>
+                        Concentrate
+                      </th>
                     </tr>
                   </thead>
                   <tbody className='divide-y divide-border bg-white font-medium text-muted-foreground/90'>
                     {tableData.map((row, i) => {
                       const isScalingRow = row.label.includes('*');
                       return (
-                        <tr key={i} className='hover:bg-slate-50/80 transition-colors'>
+                        <tr
+                          key={i}
+                          className='hover:bg-slate-50/80 transition-colors'
+                        >
                           <td className='py-2.5 px-4'>{row.label}</td>
                           <td className='py-2.5 px-4 font-mono'>{row.b}</td>
                           {phDownOn && (
-                            <td className={cn(
-                              'py-2.5 px-4 font-mono font-semibold',
-                              isScalingRow && parseFloat(row.ac) > 0 ? 'text-destructive' : 'text-amber-600',
-                            )}>
+                            <td
+                              className={cn(
+                                'py-2.5 px-4 font-mono font-semibold',
+                                isScalingRow && parseFloat(row.ac) > 0
+                                  ? 'text-destructive'
+                                  : 'text-amber-600',
+                              )}
+                            >
                               {row.ac}
                             </td>
                           )}
                           {degasOn && (
-                            <td className={cn(
-                              'py-2.5 px-4 font-mono font-semibold',
-                              isScalingRow && parseFloat(row.a) > 0 ? 'text-destructive' : 'text-primary',
-                            )}>
+                            <td
+                              className={cn(
+                                'py-2.5 px-4 font-mono font-semibold',
+                                isScalingRow && parseFloat(row.a) > 0
+                                  ? 'text-destructive'
+                                  : 'text-primary',
+                              )}
+                            >
                               {row.a}
                             </td>
                           )}
                           {phUpOn && (
-                            <td className={cn(
-                              'py-2.5 px-4 font-mono font-semibold',
-                              isScalingRow && parseFloat(row.r) > 0 ? 'text-destructive' : 'text-emerald-600',
-                            )}>
+                            <td
+                              className={cn(
+                                'py-2.5 px-4 font-mono font-semibold',
+                                isScalingRow && parseFloat(row.r) > 0
+                                  ? 'text-destructive'
+                                  : 'text-emerald-600',
+                              )}
+                            >
                               {row.r}
                             </td>
                           )}
-                          <td className={cn(
-                            'py-2.5 px-4 font-mono',
-                            isScalingRow && parseFloat(row.r) > 0 ? 'text-destructive font-bold' : '',
-                          )}>
+                          <td
+                            className={cn(
+                              'py-2.5 px-4 font-mono',
+                              isScalingRow && parseFloat(row.r) > 0
+                                ? 'text-destructive font-bold'
+                                : '',
+                            )}
+                          >
                             {row.r}
                           </td>
                         </tr>
@@ -1605,15 +1777,23 @@ export function ROConfigView() {
                   </h4>
                   <Select
                     value={activeTempView}
-                    onValueChange={(val) => setActiveTempView(val as 'min' | 'design' | 'max')}
+                    onValueChange={(val) =>
+                      setActiveTempView(val as 'min' | 'design' | 'max')
+                    }
                   >
                     <SelectTrigger className='h-8 text-xs bg-slate-50 mb-3 border-primary/30'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value='min'>Min — {feedMinTemp.toFixed(1)} °C</SelectItem>
-                      <SelectItem value='design'>Design — {feedDesignTemp.toFixed(1)} °C</SelectItem>
-                      <SelectItem value='max'>Max — {feedMaxTemp.toFixed(1)} °C</SelectItem>
+                      <SelectItem value='min'>
+                        Min — {feedMinTemp.toFixed(1)} °C
+                      </SelectItem>
+                      <SelectItem value='design'>
+                        Design — {feedDesignTemp.toFixed(1)} °C
+                      </SelectItem>
+                      <SelectItem value='max'>
+                        Max — {feedMaxTemp.toFixed(1)} °C
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <div className='flex items-center bg-muted/30 border border-transparent rounded-md h-8 overflow-hidden'>
@@ -1627,7 +1807,8 @@ export function ROConfigView() {
                     </div>
                   </div>
                   <p className='text-[10px] text-muted-foreground mt-2'>
-                    Affects pKa, osmotic pressure &amp; TCF. Set temperatures in Feed Setup.
+                    Affects pKa, osmotic pressure &amp; TCF. Set temperatures in
+                    Feed Setup.
                   </p>
                 </div>
 
@@ -1677,9 +1858,10 @@ export function ROConfigView() {
           <span className='text-[13px] font-medium text-foreground opacity-90'>
             System Temperature:
           </span>
-          <Select 
-            value={activeTempView} 
-            onValueChange={(val: any) => setActiveTempView(val)}>
+          <Select
+            value={activeTempView}
+            onValueChange={(val: any) => setActiveTempView(val)}
+          >
             <SelectTrigger className='h-8 text-xs w-28 bg-muted/20 border-border'>
               <SelectValue />
             </SelectTrigger>
@@ -1699,19 +1881,28 @@ export function ROConfigView() {
                   // min must not exceed design or max
                   updateFeedField(
                     'minTemperature',
-                    Math.max(0, Math.min(val, designTemperature, maxTemperature)),
+                    Math.max(
+                      0,
+                      Math.min(val, designTemperature, maxTemperature),
+                    ),
                   );
                 } else if (activeTempView === 'max') {
                   // max must not go below design or min
                   updateFeedField(
                     'maxTemperature',
-                    Math.min(80, Math.max(val, designTemperature, minTemperature)),
+                    Math.min(
+                      80,
+                      Math.max(val, designTemperature, minTemperature),
+                    ),
                   );
                 } else {
                   // design must stay between min and max
                   updateFeedField(
                     'designTemperature',
-                    Math.min(maxTemperature, Math.max(minTemperature, Math.min(80, Math.max(0, val)))),
+                    Math.min(
+                      maxTemperature,
+                      Math.max(minTemperature, Math.min(80, Math.max(0, val))),
+                    ),
                   );
                 }
               }}
@@ -1761,7 +1952,12 @@ export function ROConfigView() {
               recovery={displayRecovery}
               pumpPressure={displayFeedPressure}
               feedTDS={displayFeedTDS}
-              permeateTDS={livePermeateTDS ?? (liveRejection !== null ? displayFeedTDS * (1 - liveRejection / 100) : displayFeedTDS * 0.003)}
+              permeateTDS={
+                livePermeateTDS ??
+                (liveRejection !== null
+                  ? displayFeedTDS * (1 - liveRejection / 100)
+                  : displayFeedTDS * 0.003)
+              }
               rejectTDS={projectData.rejectTDS}
               passes={passes.map(
                 (passId, passIdx): PassConfig => ({
@@ -1796,7 +1992,9 @@ export function ROConfigView() {
                 <span
                   className={cn(
                     'text-[9px] font-mono leading-none',
-                    activePass === p ? 'text-primary/70' : 'text-muted-foreground/80',
+                    activePass === p
+                      ? 'text-primary/70'
+                      : 'text-muted-foreground/80',
                   )}
                 >
                   {(passRecovery[p] ?? storeRecovery).toFixed(0)}%
@@ -2030,20 +2228,6 @@ export function ROConfigView() {
                 Real-time Pass Metrics
               </h3>
             </div>
-            <div className='flex items-center gap-4'>
-              <div className='flex items-center gap-1.5'>
-                <span className='w-2 h-2 rounded-full bg-emerald-500' />
-                <span className='text-[10px] font-bold text-muted-foreground'>
-                  HEALTHY
-                </span>
-              </div>
-              <Badge
-                variant='outline'
-                className='font-mono text-[10px] bg-slate-50 text-muted-foreground border-border px-3'
-              >
-                UPDATED: 12:42 UTC
-              </Badge>
-            </div>
           </div>
 
           <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
@@ -2058,15 +2242,11 @@ export function ROConfigView() {
                 <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Net Feed
                 </span>
-                <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm'>
-                  <NumericInput
-                    value={feedFlow}
-                    onChange={(v) => useROConfigStore.getState().setFeedFlow(v)}
-                    precision={2}
-                    min={0}
-                    className='h-full flex-1 border-0 rounded-none text-sm font-mono font-bold bg-transparent focus-visible:ring-0 px-3 text-foreground'
-                  />
-                  <div className='px-2.5 h-full flex items-center bg-muted/20 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
+                <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
+                  <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-foreground'>
+                    {passMetrics.feedFlow.toFixed(2)}
+                  </div>
+                  <div className='px-2.5 h-full flex items-center bg-muted/30 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
                     m³/h
                   </div>
                 </div>
@@ -2086,10 +2266,18 @@ export function ROConfigView() {
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm'>
                   <NumericInput
-                    value={displayRecovery}
-                    onChange={(v) =>
-                      useROConfigStore.getState().setSystemRecovery(v)
-                    }
+                    value={passMetrics.recovery}
+                    onChange={(v) => {
+                      if (v >= 0 && v <= 100) {
+                        setPassRecovery((prev) => ({
+                          ...prev,
+                          [activePass]: v,
+                        }));
+                        if (activePass === 'p1') {
+                          useROConfigStore.getState().setSystemRecovery(v);
+                        }
+                      }
+                    }}
                     precision={2}
                     min={0}
                     max={100}
@@ -2113,23 +2301,11 @@ export function ROConfigView() {
                 <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Permeate Flow
                 </span>
-                <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm'>
-                  <NumericInput
-                    value={displayPermeateFlow}
-                    onChange={(v) => {
-                      const feed = useROConfigStore.getState().feedFlow;
-                      if (!feed || feed <= 0 || v < 0) return;
-                      const recovery = (v / feed) * 100;
-                      if (!isFinite(recovery) || recovery > 100) return;
-                      useROConfigStore
-                        .getState()
-                        .setSystemRecovery(parseFloat(recovery.toFixed(2)));
-                    }}
-                    precision={2}
-                    min={0}
-                    className='h-full flex-1 border-0 rounded-none text-sm font-mono font-bold bg-transparent focus-visible:ring-0 px-3 text-permeate'
-                  />
-                  <div className='px-2.5 h-full flex items-center bg-muted/20 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
+                <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
+                  <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-permeate'>
+                    {passMetrics.permeateFlow.toFixed(2)}
+                  </div>
+                  <div className='px-2.5 h-full flex items-center bg-muted/30 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
                     m³/h
                   </div>
                 </div>
@@ -2149,7 +2325,7 @@ export function ROConfigView() {
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
                   <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-foreground'>
-                    {displayFlux > 0 ? displayFlux.toFixed(2) : '—'}
+                    {passMetrics.avgFlux > 0 ? passMetrics.avgFlux.toFixed(2) : '—'}
                   </div>
                   <div className='px-2.5 h-full flex items-center bg-muted/30 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
                     LMH
@@ -2174,7 +2350,7 @@ export function ROConfigView() {
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
                   <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-warning'>
-                    {displayConcentrateFlow.toFixed(2)}
+                    {passMetrics.concentrateFlow.toFixed(2)}
                   </div>
                   <div className='px-2.5 h-full flex items-center bg-muted/30 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
                     m³/h
@@ -2196,7 +2372,7 @@ export function ROConfigView() {
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm'>
                   <NumericInput
-                    value={displayFeedPressure}
+                    value={passMetrics.feedPressure}
                     onChange={(v) =>
                       useROConfigStore.getState().setFeedPressureBar(v)
                     }
@@ -2223,7 +2399,7 @@ export function ROConfigView() {
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
                   <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-foreground/90'>
-                    {Math.round(displayFeedTDS).toLocaleString('en-US')}
+                    {Math.round(passMetrics.feedTDS).toLocaleString('en-US')}
                   </div>
                   <div className='px-2.5 h-full flex items-center bg-muted/30 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
                     mg/L
@@ -2245,7 +2421,7 @@ export function ROConfigView() {
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
                   <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-foreground/90'>
-                    {liveLowestNDP !== null ? liveLowestNDP.toFixed(2) : '—'}
+                    {passMetrics.lowestNDP !== null ? passMetrics.lowestNDP.toFixed(2) : '—'}
                   </div>
                   <div className='px-2.5 h-full flex items-center bg-muted/30 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
                     BAR
@@ -2293,7 +2469,9 @@ export function ROConfigView() {
                 <th className='px-6 py-4'>
                   <div className='flex flex-col gap-0.5'>
                     <span>Press Vessels</span>
-                    <span className='text-[9px] font-normal lowercase'>(1 - 100000)</span>
+                    <span className='text-[9px] font-normal lowercase'>
+                      (1 - 100000)
+                    </span>
                   </div>
                 </th>
                 <th className='px-6 py-4'>
@@ -2302,11 +2480,13 @@ export function ROConfigView() {
                       <span>No of Els</span>
                       <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
                     </div>
-                    <span className='text-[9px] font-normal lowercase'>(1 - 8)</span>
+                    <span className='text-[9px] font-normal lowercase'>
+                      (1 - 8)
+                    </span>
                   </div>
                 </th>
                 <th className='px-6 py-4 border-r border-border/50'>
-                   <div className='flex flex-col gap-0.5'>
+                  <div className='flex flex-col gap-0.5'>
                     <div className='flex items-center gap-1'>
                       <span>Total</span>
                       <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
@@ -2315,7 +2495,7 @@ export function ROConfigView() {
                   </div>
                 </th>
                 <th className='px-6 py-4 min-w-[480px]'>
-                   <div className='flex flex-col gap-0.5'>
+                  <div className='flex flex-col gap-0.5'>
                     <div className='flex items-center gap-1'>
                       <span>Element</span>
                       <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
@@ -2329,7 +2509,9 @@ export function ROConfigView() {
                       <span>Flow Factor</span>
                       <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
                     </div>
-                    <span className='text-[9px] font-normal lowercase'>(0.1 - 1)</span>
+                    <span className='text-[9px] font-normal lowercase'>
+                      (0.1 - 1)
+                    </span>
                   </div>
                 </th>
                 <th className='px-6 py-4'>
@@ -2338,19 +2520,25 @@ export function ROConfigView() {
                       <span>Piping ΔP</span>
                       <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
                     </div>
-                    <span className='text-[9px] font-normal lowercase'>(0 - 10)</span>
+                    <span className='text-[9px] font-normal lowercase'>
+                      (0 - 10)
+                    </span>
                   </div>
                 </th>
                 <th className='px-6 py-4'>
                   <div className='flex flex-col gap-0.5'>
                     <span>Back Press</span>
-                    <span className='text-[9px] font-normal lowercase'>(0 - 20)</span>
+                    <span className='text-[9px] font-normal lowercase'>
+                      (0 - 20)
+                    </span>
                   </div>
                 </th>
                 <th className='px-6 py-4 pr-8'>
                   <div className='flex flex-col gap-0.5'>
                     <span>Conc to Feed</span>
-                    <span className='text-[9px] font-normal lowercase'>(0 - 95)</span>
+                    <span className='text-[9px] font-normal lowercase'>
+                      (0 - 95)
+                    </span>
                   </div>
                 </th>
               </tr>
@@ -2498,7 +2686,9 @@ export function ROConfigView() {
                             htmlFor={`isd-${idx}`}
                             className={cn(
                               'text-[10px] font-black uppercase cursor-pointer',
-                              stg.isd ? 'text-primary' : 'text-muted-foreground/80',
+                              stg.isd
+                                ? 'text-primary'
+                                : 'text-muted-foreground/80',
                             )}
                           >
                             ISD

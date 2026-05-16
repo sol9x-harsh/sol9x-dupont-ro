@@ -1,9 +1,9 @@
 ```md
-# SOL9X RO Design Studio — Project Context
+# Transfilm RO Design Studio — Project Context
 
 ## Overview
 
-SOL9X is a high-fidelity industrial engineering SaaS platform for Reverse Osmosis (RO) system design, simulation, optimization, chemistry validation, and engineering report generation.
+Transfilm is a high-fidelity industrial engineering SaaS platform for Reverse Osmosis (RO) system design, simulation, optimization, chemistry validation, and engineering report generation.
 
 The platform is being rebuilt from a Vite React application into a scalable production-grade Next.js App Router application.
 
@@ -99,7 +99,7 @@ Planned deterministic calculation modules:
 
 # Core Engineering Philosophy
 
-SOL9X is NOT a probabilistic simulator.
+Transfilm is NOT a probabilistic simulator.
 
 It is a deterministic engineering calculation platform.
 

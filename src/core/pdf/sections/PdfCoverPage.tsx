@@ -1,5 +1,5 @@
 import React from 'react';
-import { Page, View, Text, StyleSheet, Svg, Rect, Line, Circle } from '@react-pdf/renderer';
+import { Page, View, Text, StyleSheet, Svg, Circle } from '@react-pdf/renderer';
 import { PDF_COLORS, PDF_FONTS, PDF_PAGE, PDF_REPORT_META, PDF_SIZES } from '../constants/pdf.constants';
 import type { FullEngineeringReport } from '@/core/reporting/models/report.models';
 
@@ -9,7 +9,6 @@ const s = StyleSheet.create({
     fontFamily: PDF_FONTS.sans,
     padding: 0,
   },
-  // Top section — branding bar
   topBar: {
     paddingHorizontal: 48,
     paddingTop: 44,
@@ -30,7 +29,7 @@ const s = StyleSheet.create({
   logoSub: {
     fontSize: PDF_SIZES.small,
     fontFamily: PDF_FONTS.sans,
-    color: 'rgba(255,255,255,0.45)',
+    color: PDF_COLORS.textWhite,
     letterSpacing: 0.5,
     marginTop: 2,
   },
@@ -50,16 +49,12 @@ const s = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-
-  // Hero divider
   heroDivider: {
     marginHorizontal: 48,
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.08)',
     marginBottom: 52,
   },
-
-  // Main title block
   titleBlock: {
     paddingHorizontal: 48,
     marginBottom: 40,
@@ -67,7 +62,7 @@ const s = StyleSheet.create({
   reportType: {
     fontSize: PDF_SIZES.tiny,
     fontFamily: PDF_FONTS.sansBold,
-    color: PDF_COLORS.coverAccentLight,
+    color: PDF_COLORS.primary,
     textTransform: 'uppercase',
     letterSpacing: 2.5,
     marginBottom: 12,
@@ -82,20 +77,16 @@ const s = StyleSheet.create({
   mainSubtitle: {
     fontSize: PDF_SIZES.h2,
     fontFamily: PDF_FONTS.sans,
-    color: 'rgba(255,255,255,0.55)',
+    color: PDF_COLORS.textWhite,
     letterSpacing: 0.3,
   },
-
-  // Accent rule
   accentRule: {
     marginHorizontal: 48,
     height: 2,
-    backgroundColor: PDF_COLORS.coverAccent,
+    backgroundColor: PDF_COLORS.primary,
     marginBottom: 40,
     width: 64,
   },
-
-  // Project info block
   projectBlock: {
     marginHorizontal: 48,
     marginBottom: 44,
@@ -112,7 +103,7 @@ const s = StyleSheet.create({
   projectLabel: {
     fontSize: PDF_SIZES.label,
     fontFamily: PDF_FONTS.sansBold,
-    color: 'rgba(255,255,255,0.35)',
+    color: PDF_COLORS.textWhite,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
     marginBottom: 3,
@@ -125,17 +116,15 @@ const s = StyleSheet.create({
   projectValueMono: {
     fontSize: PDF_SIZES.h3,
     fontFamily: PDF_FONTS.mono,
-    color: PDF_COLORS.coverAccentLight,
+    color: PDF_COLORS.textWhite,
   },
-
-  // Bottom accent band
   bottomBand: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     height: 56,
-    backgroundColor: PDF_COLORS.coverAccent,
+    backgroundColor: PDF_COLORS.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -153,51 +142,11 @@ const s = StyleSheet.create({
     fontFamily: PDF_FONTS.mono,
     color: 'rgba(255,255,255,0.6)',
   },
-
-  // Decorative element grid
   decoGrid: {
     position: 'absolute',
     right: 48,
     top: 120,
     opacity: 0.07,
-  },
-
-  // Revision block
-  revisionBlock: {
-    marginHorizontal: 48,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderStyle: 'solid',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  revisionHeader: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    flexDirection: 'row',
-  },
-  revisionCol: {
-    flex: 1,
-    fontSize: PDF_SIZES.label,
-    fontFamily: PDF_FONTS.sansBold,
-    color: 'rgba(255,255,255,0.3)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  revisionRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-    borderTopStyle: 'solid',
-  },
-  revisionCell: {
-    flex: 1,
-    fontSize: PDF_SIZES.small,
-    fontFamily: PDF_FONTS.mono,
-    color: 'rgba(255,255,255,0.5)',
   },
 });
 
@@ -215,8 +164,6 @@ export function PdfCoverPage({ report }: PdfCoverPageProps) {
 
   return (
     <Page size={PDF_PAGE.size} orientation="portrait" style={s.page}>
-
-      {/* Decorative dot grid (top-right) */}
       <View style={s.decoGrid}>
         <Svg width="160" height="160" viewBox="0 0 160 160">
           {Array.from({ length: 8 }).map((_, row) =>
@@ -233,10 +180,9 @@ export function PdfCoverPage({ report }: PdfCoverPageProps) {
         </Svg>
       </View>
 
-      {/* Top branding bar */}
       <View style={s.topBar}>
         <View style={s.logoArea}>
-          <Text style={s.logoMark}>SOL9X</Text>
+          <Text style={s.logoMark}>TRANSFILM</Text>
           <Text style={s.logoSub}>{PDF_REPORT_META.company.toUpperCase()}</Text>
         </View>
         <View style={s.versionBadge}>
@@ -246,7 +192,6 @@ export function PdfCoverPage({ report }: PdfCoverPageProps) {
 
       <View style={s.heroDivider} />
 
-      {/* Main title */}
       <View style={s.titleBlock}>
         <Text style={s.reportType}>Engineering Design Report</Text>
         <Text style={s.mainTitle}>Reverse Osmosis{'\n'}System Analysis</Text>
@@ -255,7 +200,6 @@ export function PdfCoverPage({ report }: PdfCoverPageProps) {
 
       <View style={s.accentRule} />
 
-      {/* Project info */}
       <View style={s.projectBlock}>
         <View style={s.projectCol}>
           <View style={s.projectItem}>
@@ -295,26 +239,9 @@ export function PdfCoverPage({ report }: PdfCoverPageProps) {
         </View>
       </View>
 
-      {/* Revision table */}
-      <View style={s.revisionBlock}>
-        <View style={s.revisionHeader}>
-          {['Rev', 'Date', 'Description', 'Prepared By', 'Status'].map((col) => (
-            <Text key={col} style={s.revisionCol}>{col}</Text>
-          ))}
-        </View>
-        <View style={s.revisionRow}>
-          <Text style={s.revisionCell}>00</Text>
-          <Text style={s.revisionCell}>{dateStr}</Text>
-          <Text style={s.revisionCell}>Initial Issue</Text>
-          <Text style={s.revisionCell}>{metadata.preparedBy || PDF_REPORT_META.company}</Text>
-          <Text style={s.revisionCell}>FOR REVIEW</Text>
-        </View>
-      </View>
-
-      {/* Bottom accent band */}
       <View style={s.bottomBand}>
         <Text style={s.bandLeft}>Reverse Osmosis Design Analysis</Text>
-        <Text style={s.bandRight}>CONFIDENTIAL ENGINEERING DOCUMENT</Text>
+        <Text style={s.bandRight}>Standard Engineering Format</Text>
       </View>
     </Page>
   );

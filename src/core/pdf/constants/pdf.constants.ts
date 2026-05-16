@@ -105,9 +105,9 @@ export const PDF_PAGE = {
 } as const;
 
 export const PDF_REPORT_META = {
-  company: 'SOL9X Engineering Services',
-  software: 'SOL9X RO Design Studio',
-  version: 'v2026.05',
-  disclaimer: 'This document is confidential and intended for engineering use only.',
+  company: 'Transfilm Engineering Services',
+  software: 'Transfilm RO Design Studio',
+  version: '',
+  disclaimer: '',
   format: 'Standard Engineering Format',
 } as const;

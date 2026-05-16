@@ -168,11 +168,6 @@ export function SystemDesignPFD({ editable = false }: { editable?: boolean }) {
               m³/h
             </span>
           </div>
-          {permeateTDS !== null && (
-            <div className='px-3 pb-2 text-[9px] font-mono text-permeate/70 font-bold'>
-              TDS: {Math.round(permeateTDS).toLocaleString('en-US')} mg/L
-            </div>
-          )}
         </div>
       </div>
     </div>

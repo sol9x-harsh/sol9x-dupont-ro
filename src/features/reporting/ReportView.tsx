@@ -23,6 +23,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { useMutation } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { ReportHeader } from '@/features/reporting/components/ReportHeader';
 import { SystemSummary } from '@/features/reporting/sections/SystemSummary';
@@ -218,7 +219,6 @@ function toChemicalCosts(r: FullEngineeringReport): ChemicalCostData[] {
 
 export function ReportView() {
   const [exportOpen, setExportOpen] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
   const pfdRef = useRef<HTMLDivElement>(null);
   const { chemistry, activeTemperatureView, setActiveTemperatureView, updateChemistryField } = useFeedStore();
   const [customTemp, setCustomTemp] = useState<string>(chemistry.designTemperature.toString());
@@ -267,7 +267,7 @@ export function ReportView() {
         elements: [],
         caseName: '—',
         preparedBy: '—',
-        company: 'SOL9X Engineering Services',
+        company: 'Transfilm Engineering Services',
         customer: '—',
         country: '—',
         marketSegment: '—',
@@ -361,53 +361,52 @@ export function ReportView() {
     );
   };
 
-  const handleExport = async () => {
-    if (!report) {
-      toast.error('No design data available', {
-        description: 'Configure and run the RO design engine before exporting the report.',
-      });
-      return;
-    }
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      if (!report) throw new Error('No design data available');
 
-    setExportOpen(false);
-    setIsExporting(true);
-
-    const exportToast = toast.loading('Generating Engineering Report…', {
-      description: `Compiling ${selectedSections.length} section${selectedSections.length !== 1 ? 's' : ''} into PDF.`,
-    });
-
-    try {
       let pfdImage = '';
       if (pfdRef.current) {
-        // Capture the PFD as a high-quality PNG
-        pfdImage = await toPng(pfdRef.current, { 
+        pfdImage = await toPng(pfdRef.current, {
           backgroundColor: '#ffffff',
-          pixelRatio: 2, // Higher quality
+          pixelRatio: 2,
         });
       }
 
-      await generateEngineeringPDF(report, {
+      return generateEngineeringPDF(report, {
         selectedSections,
         pfdImage,
         onStatusChange: (status) => {
           if (status === 'done') {
-            toast.dismiss(exportToast);
             toast.success('Engineering Report Exported', {
-              description: `SOL9X_RO_Report downloaded successfully.`,
+              description: `Transfilm_RO_Report downloaded successfully.`,
             });
           }
         },
       });
-    } catch (err) {
-      toast.dismiss(exportToast);
-      toast.error('Export Failed', {
-        description: 'An error occurred while generating the PDF. Please try again.',
+    },
+    onMutate: () => {
+      setExportOpen(false);
+      toast.loading('Generating Engineering Report…', {
+        id: 'report-export',
+        description: `Compiling ${selectedSections.length} section${selectedSections.length !== 1 ? 's' : ''} into PDF.`,
       });
-      console.error('[PDF Export]', err);
-    } finally {
-      setIsExporting(false);
-    }
+    },
+    onSuccess: () => {
+      toast.dismiss('report-export');
+    },
+    onError: (err: any) => {
+      toast.dismiss('report-export');
+      toast.error('Export Failed', {
+        description: err.message || 'An error occurred while generating the PDF. Please try again.',
+      });
+    },
+  });
+
+  const handleExport = () => {
+    exportMutation.mutate();
   };
+
 
   return (
     <div
@@ -493,11 +492,12 @@ export function ReportView() {
               </Button>
               <Button
                 onClick={handleExport}
-                disabled={selectedSections.length === 0 || isExporting}
+                disabled={selectedSections.length === 0 || exportMutation.isPending}
                 className='h-10 rounded-xl px-8 bg-primary hover:bg-primary/90 text-white font-bold text-xs shadow-lg shadow-primary/20 border-0'
               >
-                {isExporting ? 'GENERATING…' : 'GENERATE PDF'}
+                {exportMutation.isPending ? 'GENERATING…' : 'GENERATE PDF'}
               </Button>
+
             </div>
           </div>
         </DialogContent>
@@ -584,6 +584,7 @@ export function ReportView() {
             <Button
               variant='outline'
               size='sm'
+              onClick={() => window.print()}
               className='h-9 rounded-lg font-bold text-[11px] border-slate-200 px-3'
             >
               <Printer className='w-3.5 h-3.5 mr-2 text-slate-400' /> PRINT
@@ -692,8 +693,8 @@ export function ReportView() {
 
       {/* Footer Branding */}
       <div className='pt-10 border-t border-border text-center'>
-        <p className='text-[10px] font-mono text-muted-foreground opacity-50 uppercase tracking-[0.3em]'>
-          SOL9X - RO Engineering Design Studio - v2026.05.07
+        <p className='text-[10px] font-mono text-muted-foreground opacity-80 uppercase tracking-[0.3em]'>
+          Transfilm - RO Engineering Design Studio - v2026.05.07
         </p>
       </div>
     </div>

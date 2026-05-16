@@ -74,6 +74,9 @@ export default {
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
         "accordion-up": { from: { height: "var(--radix-accordion-content-height)" }, to: { height: "0" } },
+        "shimmer": {
+          "100%": { transform: "translateX(100%)" },
+        },
       },
       transitionTimingFunction: {
         premium: "cubic-bezier(0.34, 1.56, 0.64, 1)",
@@ -81,6 +84,7 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "shimmer": "shimmer 2s infinite",
       },
     },
   },

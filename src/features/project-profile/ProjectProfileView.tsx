@@ -24,8 +24,10 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '@/store/project-store';
 import { useState, useEffect } from 'react';
+import { useMetadata } from '@/hooks/useMetadata';
 
-const SEGMENTS = [
+// Metadata is now fetched from the hook
+const DEFAULT_SEGMENTS = [
   'Mining',
   'Municipal Drinking',
   'Municipal Wastewater',
@@ -35,25 +37,14 @@ const SEGMENTS = [
   'Residential',
   'Others',
 ];
-const COUNTRIES = [
-  'United States',
-  'India',
-  'Saudi Arabia',
-  'United Arab Emirates',
-  'Qatar',
-  'Singapore',
-  'Australia',
-  'United Kingdom',
-  'Germany',
-];
-const CURRENCIES = [
-  'US Dollar (USD)',
-  'Chinese Yuan (RMB)',
-  'Indian Rupee (INR)',
-];
 
 export function ProjectProfileView() {
   const { currentProject, updateProject } = useProjectStore();
+  const { data: meta } = useMetadata();
+
+  const SEGMENTS = meta?.segments ?? DEFAULT_SEGMENTS;
+  const COUNTRIES = meta?.countries ?? ['United States', 'India'];
+  const CURRENCIES = meta?.currencies ?? ['US Dollar (USD)'];
   const [unitSystem, setUnitSystem] = useState<'US' | 'METRIC' | 'USER'>(
     currentProject?.unitSystem || 'METRIC',
   );

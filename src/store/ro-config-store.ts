@@ -62,11 +62,11 @@ interface ROConfigState {
   passOptimizationMode: 'Bypass' | 'None';
   bypassMode: 'Percent' | 'Flow';
   bypassValue: number;
-  concentrateRecycle: ConcentrateRecycle;
+  concentrateRecycle: Record<string, ConcentrateRecycle>;
   setPassOptimizationMode: (mode: 'Bypass' | 'None') => void;
   setBypassMode: (mode: 'Percent' | 'Flow') => void;
   setBypassValue: (value: number) => void;
-  setConcentrateRecycle: (patch: Partial<ConcentrateRecycle>) => void;
+  setConcentrateRecycle: (passId: string, patch: Partial<ConcentrateRecycle>) => void;
   setPasses: (passes: Pass[]) => void;
   setFeedFlow: (flow: number) => void;
   setSystemRecovery: (recovery: number) => void;
@@ -113,9 +113,11 @@ const defaultState = {
   bypassMode: 'Flow' as 'Percent' | 'Flow',
   bypassValue: 0,
   concentrateRecycle: {
-    enabled: false,
-    mode: 'Percent' as 'Percent' | 'Flow',
-    value: 0,
+    p1: {
+      enabled: false,
+      mode: 'Percent' as 'Percent' | 'Flow',
+      value: 0,
+    }
   },
 };
 
@@ -125,8 +127,14 @@ export const useROConfigStore = create<ROConfigState>((set) => ({
   setPassOptimizationMode: (mode) => set({ passOptimizationMode: mode }),
   setBypassMode: (mode) => set({ bypassMode: mode }),
   setBypassValue: (val) => set({ bypassValue: val }),
-  setConcentrateRecycle: (patch) => set((state) => ({
-    concentrateRecycle: { ...state.concentrateRecycle, ...patch }
+  setConcentrateRecycle: (passId, patch) => set((state) => ({
+    concentrateRecycle: { 
+      ...state.concentrateRecycle, 
+      [passId]: { 
+        ...(state.concentrateRecycle[passId] || { enabled: false, mode: 'Percent', value: 0 }), 
+        ...patch 
+      } 
+    }
   })),
 
   setPasses: (passes) => set({ passes }),
@@ -142,19 +150,29 @@ export const useROConfigStore = create<ROConfigState>((set) => ({
 
   setSystemRecovery: (systemRecovery) => set((state) => {
     const permeateFlow = state.feedFlow * (systemRecovery / 100);
+    const passes = [...state.passes];
+    if (passes.length === 1 && passes[0]) {
+      passes[0] = { ...passes[0], recovery: systemRecovery };
+    }
     return { 
       systemRecovery, 
       permeateFlow,
-      concentrateFlow: state.feedFlow - permeateFlow
+      concentrateFlow: state.feedFlow - permeateFlow,
+      passes
     };
   }),
 
   setPermeateFlow: (permeateFlow) => set((state) => {
     const systemRecovery = state.feedFlow > 0 ? (permeateFlow / state.feedFlow) * 100 : state.systemRecovery;
+    const passes = [...state.passes];
+    if (passes.length === 1 && passes[0]) {
+      passes[0] = { ...passes[0], recovery: parseFloat(systemRecovery.toFixed(2)) };
+    }
     return {
       permeateFlow,
       systemRecovery: parseFloat(systemRecovery.toFixed(2)),
-      concentrateFlow: state.feedFlow - permeateFlow
+      concentrateFlow: state.feedFlow - permeateFlow,
+      passes
     };
   }),
 

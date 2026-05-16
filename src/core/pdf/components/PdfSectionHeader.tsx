@@ -50,12 +50,11 @@ export function PdfSectionHeader({
   number,
   title,
   subtitle,
-  accentColor = PDF_COLORS.primary,
 }: PdfSectionHeaderProps) {
   return (
     <View style={s.wrapper}>
       {number ? <Text style={s.sectionNumber}>{number}</Text> : null}
-      <View style={[s.accentBar, { backgroundColor: accentColor }]} />
+      <View style={[s.accentBar, { backgroundColor: PDF_COLORS.primary }]} />
       <Text style={s.heading}>{title}</Text>
       {subtitle ? <Text style={s.subtitle}>{subtitle}</Text> : null}
       <View style={s.divider} />

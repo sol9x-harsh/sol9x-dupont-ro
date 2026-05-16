@@ -22,7 +22,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Sparkles, Globe2, Settings2 } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMetadata } from '@/hooks/useMetadata';
 
 interface Props {
   open: boolean;
@@ -30,7 +31,8 @@ interface Props {
   onCreate?: (projectId: string) => void;
 }
 
-const SEGMENTS = [
+// We now use metadata from the hook
+const DEFAULT_SEGMENTS = [
   'Mining',
   'Municipal Drinking',
   'Municipal Wastewater',
@@ -39,22 +41,6 @@ const SEGMENTS = [
   'Power',
   'Residential',
   'Others',
-];
-const COUNTRIES = [
-  'United States',
-  'India',
-  'Saudi Arabia',
-  'United Arab Emirates',
-  'Qatar',
-  'Singapore',
-  'Australia',
-  'United Kingdom',
-  'Germany',
-];
-const CURRENCIES = [
-  'US Dollar (USD)',
-  'Chinese Yuan (RMB)',
-  'Indian Rupee (INR)',
 ];
 
 const UNITS = [
@@ -70,32 +56,51 @@ const UNITS = [
 
 export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
   const queryClient = useQueryClient();
-  
+  const { data: meta } = useMetadata();
+
+  const SEGMENTS = meta?.segments ?? DEFAULT_SEGMENTS;
+  const COUNTRIES = meta?.countries ?? ['United States', 'India'];
+  const CURRENCIES = meta?.currencies ?? ['US Dollar (USD)'];
+
   // Basic Info
   const [name, setName] = useState('');
   const [segment, setSegment] = useState('Municipal Drinking');
   const [client, setClient] = useState('');
   const [folder, setFolder] = useState<string>('none');
   const [notes, setNotes] = useState('');
-  
+
   // Stakeholders
   const [designer, setDesigner] = useState('');
   const [company, setCompany] = useState('');
-  
+
   // Location
   const [location, setLocation] = useState('India');
   const [state, setState] = useState('');
   const [city, setCity] = useState('');
-  
+
   // Settings
   const [currency, setCurrency] = useState('US Dollar (USD)');
   const [exchangeRate, setExchangeRate] = useState('1.00');
-  const [unitSystem, setUnitSystem] = useState<'US' | 'METRIC' | 'USER'>('METRIC');
+  const [unitSystem, setUnitSystem] = useState<'US' | 'METRIC' | 'USER'>(
+    'METRIC',
+  );
   const [userUnits, setUserUnits] = useState<Record<string, 'US' | 'METRIC'>>(
-    Object.fromEntries(UNITS.map(([p]) => [p, 'METRIC']))
+    Object.fromEntries(UNITS.map(([p]) => [p, 'METRIC'])),
   );
 
-  const [folders, setFolders] = useState<{ name: string }[]>([]);
+  const { data: foldersData } = useQuery({
+    queryKey: ['folders'],
+    queryFn: async () => {
+      const res = await fetch('/api/folders');
+      if (!res.ok) throw new Error('Failed to fetch folders');
+      return res.json();
+    },
+    enabled: open,
+    staleTime: 300000, // 5 minutes cache for folders in modal
+  });
+
+  const folders = foldersData?.folders ?? [];
+
   const [createError, setCreateError] = useState('');
 
   const close = () => {
@@ -111,22 +116,6 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
     setState('');
     setCity('');
   };
-
-  const fetchFolders = async () => {
-    try {
-      const res = await fetch('/api/folders');
-      if (res.ok) {
-        const data = await res.json();
-        setFolders(data.folders || []);
-      }
-    } catch (e) {
-      console.error('Failed to fetch folders');
-    }
-  };
-
-  useEffect(() => {
-    if (open) fetchFolders();
-  }, [open]);
 
   const createProjectMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -165,7 +154,7 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
       currency,
       exchangeRate,
       unitSystem,
-      userUnits
+      userUnits,
     });
   };
 
@@ -177,14 +166,18 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
           <div className='absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -mr-32 -mt-32 blur-3xl' />
           <div className='relative flex items-center justify-between'>
             <div className='space-y-1'>
-              <Badge variant='outline' className='bg-primary/5 text-primary border-primary/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-2 w-fit block'>
+              <Badge
+                variant='outline'
+                className='bg-primary/5 text-primary border-primary/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-2 w-fit block'
+              >
                 New Design Project
               </Badge>
               <DialogTitle className='font-display text-xl sm:text-2xl font-semibold text-slate-900 leading-tight'>
                 Configure New RO Project
               </DialogTitle>
               <DialogDescription className='text-xs sm:text-sm text-slate-500 max-w-lg mt-1.5'>
-                Define your project scope, engineering standards, and stakeholder information to initialize your design workflow.
+                Define your project scope, engineering standards, and
+                stakeholder information to initialize your design workflow.
               </DialogDescription>
             </div>
             <div className='hidden sm:flex flex-col items-end shrink-0'>
@@ -214,7 +207,8 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                 <div className='grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6'>
                   <div className='sm:col-span-2 space-y-2'>
                     <Label className='text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider'>
-                      <span className='text-destructive mr-1'>*</span> Project Name
+                      <span className='text-destructive mr-1'>*</span> Project
+                      Name
                     </Label>
                     <Input
                       value={name}
@@ -234,7 +228,9 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                       </SelectTrigger>
                       <SelectContent>
                         {SEGMENTS.map((s) => (
-                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -250,8 +246,10 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value='none'>Root Workspace</SelectItem>
-                        {folders.map((f) => (
-                          <SelectItem key={f.name} value={f.name}>{f.name}</SelectItem>
+                        {folders.map((f: { name: string }) => (
+                          <SelectItem key={f.name} value={f.name}>
+                            {f.name}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -287,19 +285,34 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                     <Label className='text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider'>
                       Designer
                     </Label>
-                    <Input value={designer} onChange={(e) => setDesigner(e.target.value)} placeholder='John Doe' className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md' />
+                    <Input
+                      value={designer}
+                      onChange={(e) => setDesigner(e.target.value)}
+                      placeholder='John Doe'
+                      className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md'
+                    />
                   </div>
                   <div className='space-y-2'>
                     <Label className='text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider'>
                       Organization
                     </Label>
-                    <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder='Company Name' className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md' />
+                    <Input
+                      value={company}
+                      onChange={(e) => setCompany(e.target.value)}
+                      placeholder='Company Name'
+                      className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md'
+                    />
                   </div>
                   <div className='sm:col-span-2 space-y-2'>
                     <Label className='text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider'>
                       Customer / Client
                     </Label>
-                    <Input value={client} onChange={(e) => setClient(e.target.value)} placeholder='Client Name' className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md' />
+                    <Input
+                      value={client}
+                      onChange={(e) => setClient(e.target.value)}
+                      placeholder='Client Name'
+                      className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md'
+                    />
                   </div>
 
                   <div className='space-y-2'>
@@ -312,7 +325,9 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                       </SelectTrigger>
                       <SelectContent>
                         {COUNTRIES.map((c) => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -322,13 +337,23 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                       <Label className='text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider'>
                         State
                       </Label>
-                      <Input value={state} onChange={(e) => setState(e.target.value)} placeholder='State' className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md' />
+                      <Input
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                        placeholder='State'
+                        className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md'
+                      />
                     </div>
                     <div className='space-y-2'>
                       <Label className='text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider'>
                         City
                       </Label>
-                      <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder='City' className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md' />
+                      <Input
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        placeholder='City'
+                        className='h-10 sm:h-11 bg-slate-50 border-slate-200 text-slate-900 font-medium rounded-md'
+                      />
                     </div>
                   </div>
                 </div>
@@ -359,18 +384,24 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                         </SelectTrigger>
                         <SelectContent>
                           {CURRENCIES.map((c) => (
-                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       <div className='flex items-center gap-2 px-1'>
-                        <span className='text-[9px] sm:text-[10px] font-bold text-slate-500'>RATE</span>
-                        <Input 
-                          value={exchangeRate} 
+                        <span className='text-[9px] sm:text-[10px] font-bold text-slate-500'>
+                          RATE
+                        </span>
+                        <Input
+                          value={exchangeRate}
                           onChange={(e) => setExchangeRate(e.target.value)}
-                          className='h-7 sm:h-8 w-20 sm:w-24 font-mono text-[10px] sm:text-xs bg-white border-slate-300 text-slate-900 font-bold' 
+                          className='h-7 sm:h-8 w-20 sm:w-24 font-mono text-[10px] sm:text-xs bg-white border-slate-300 text-slate-900 font-bold'
                         />
-                        <span className='text-[9px] sm:text-[10px] text-slate-500 font-medium'>vs USD ($)</span>
+                        <span className='text-[9px] sm:text-[10px] text-slate-500 font-medium'>
+                          vs USD ($)
+                        </span>
                       </div>
                     </div>
 
@@ -387,7 +418,7 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                               'text-[9px] sm:text-[10px] font-bold py-1.5 rounded-md transition-all uppercase tracking-wider',
                               unitSystem === u
                                 ? 'bg-white text-slate-900 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700'
+                                : 'text-slate-500 hover:text-slate-700',
                             )}
                           >
                             {u === 'USER' ? 'Custom' : u}
@@ -398,28 +429,43 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                       <div className='rounded-lg border border-slate-300 bg-white overflow-hidden shadow-sm'>
                         <div className='max-h-[220px] overflow-y-auto scrollbar-premium'>
                           {UNITS.map(([p, us, m]) => (
-                            <div key={p} className='grid grid-cols-[1fr_50px_60px] gap-2 px-3 py-2.5 items-center border-b border-slate-100 last:border-0 hover:bg-slate-50/80 transition-colors'>
-                              <span className='text-[10px] sm:text-[11px] font-bold text-slate-700 truncate'>{p}</span>
+                            <div
+                              key={p}
+                              className='grid grid-cols-[1fr_50px_60px] gap-2 px-3 py-2.5 items-center border-b border-slate-100 last:border-0 hover:bg-slate-50/80 transition-colors'
+                            >
+                              <span className='text-[10px] sm:text-[11px] font-bold text-slate-700 truncate'>
+                                {p}
+                              </span>
                               <Badge
                                 variant='outline'
-                                onClick={() => unitSystem === 'USER' && setUserUnits(v => ({...v, [p]: 'US'}))}
+                                onClick={() =>
+                                  unitSystem === 'USER' &&
+                                  setUserUnits((v) => ({ ...v, [p]: 'US' }))
+                                }
                                 className={cn(
                                   'h-5 sm:h-6 justify-center font-mono text-[9px] sm:text-[10px] font-black cursor-pointer border-2 transition-all',
-                                  (unitSystem === 'US' || (unitSystem === 'USER' && userUnits[p] === 'US'))
+                                  unitSystem === 'US' ||
+                                    (unitSystem === 'USER' &&
+                                      userUnits[p] === 'US')
                                     ? 'bg-primary text-white border-primary shadow-sm'
-                                    : 'text-slate-400 border-slate-100'
+                                    : 'text-slate-400 border-slate-100',
                                 )}
                               >
                                 {us}
                               </Badge>
                               <Badge
                                 variant='outline'
-                                onClick={() => unitSystem === 'USER' && setUserUnits(v => ({...v, [p]: 'METRIC'}))}
+                                onClick={() =>
+                                  unitSystem === 'USER' &&
+                                  setUserUnits((v) => ({ ...v, [p]: 'METRIC' }))
+                                }
                                 className={cn(
                                   'h-5 sm:h-6 justify-center font-mono text-[9px] sm:text-[10px] font-black cursor-pointer border-2 transition-all',
-                                  (unitSystem === 'METRIC' || (unitSystem === 'USER' && userUnits[p] === 'METRIC'))
+                                  unitSystem === 'METRIC' ||
+                                    (unitSystem === 'USER' &&
+                                      userUnits[p] === 'METRIC')
                                     ? 'bg-primary text-white border-primary shadow-sm'
-                                    : 'text-slate-400 border-slate-100'
+                                    : 'text-slate-400 border-slate-100',
                                 )}
                               >
                                 {m}
@@ -437,9 +483,12 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
                     <Sparkles className='w-4 h-4' />
                   </div>
                   <div className='space-y-1'>
-                    <p className='text-[10px] sm:text-[11px] font-bold text-primary uppercase tracking-wider'>Engineering Guide</p>
+                    <p className='text-[10px] sm:text-[11px] font-bold text-primary uppercase tracking-wider'>
+                      Engineering Guide
+                    </p>
                     <p className='text-[9px] sm:text-[10px] text-slate-600 leading-relaxed font-medium'>
-                      Your selected unit system will propagate across all design tabs. You can customize individual units after creation.
+                      Your selected unit system will propagate across all design
+                      tabs. You can customize individual units after creation.
                     </p>
                   </div>
                 </div>
@@ -451,7 +500,12 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
         {/* Footer Actions - Fixed */}
         <div className='px-6 sm:px-8 py-4 sm:py-5 bg-slate-50 border-t border-slate-100 shrink-0 flex items-center justify-between'>
           <div className='flex items-center gap-4'>
-            <Button variant='ghost' onClick={close} disabled={createProjectMutation.isPending} className='text-sm text-slate-500 hover:text-slate-900 font-semibold'>
+            <Button
+              variant='ghost'
+              onClick={close}
+              disabled={createProjectMutation.isPending}
+              className='text-sm text-slate-500 hover:text-slate-900 font-semibold'
+            >
               Cancel
             </Button>
             {createError && (
@@ -465,8 +519,9 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
             disabled={!name || createProjectMutation.isPending}
             className='h-10 sm:h-11 px-6 sm:px-8 rounded-full font-bold text-[10px] sm:text-xs uppercase tracking-widest gap-3 shadow-lg shadow-primary/30 transition-all active:scale-[0.98]'
             style={{
-              background: 'linear-gradient(135deg, hsl(215,55%,35%), hsl(210,50%,45%))',
-              color: 'white'
+              background:
+                'linear-gradient(135deg, hsl(215,55%,35%), hsl(210,50%,45%))',
+              color: 'white',
             }}
           >
             {createProjectMutation.isPending ? (
@@ -488,9 +543,35 @@ export function CreateProjectModal({ open, onOpenChange, onCreate }: Props) {
 }
 
 const Loader2 = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+  <svg
+    className={className}
+    xmlns='http://www.w3.org/2000/svg'
+    width='24'
+    height='24'
+    viewBox='0 0 24 24'
+    fill='none'
+    stroke='currentColor'
+    strokeWidth='2'
+    strokeLinecap='round'
+    strokeLinejoin='round'
+  >
+    <path d='M21 12a9 9 0 1 1-6.219-8.56' />
+  </svg>
 );
 
 const ChevronRight = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+  <svg
+    className={className}
+    xmlns='http://www.w3.org/2000/svg'
+    width='24'
+    height='24'
+    viewBox='0 0 24 24'
+    fill='none'
+    stroke='currentColor'
+    strokeWidth='2'
+    strokeLinecap='round'
+    strokeLinejoin='round'
+  >
+    <path d='m9 18 6-6-6-6' />
+  </svg>
 );

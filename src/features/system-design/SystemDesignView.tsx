@@ -73,7 +73,7 @@ export function SystemDesignView() {
           <div className='mt-12 pt-6 border-t border-border flex items-center justify-between text-[10px] text-muted-foreground font-mono'>
             <div className='flex items-center gap-6'>
               <div className='flex items-center gap-2'>
-                <span className='opacity-50'>SYSTEM STATUS:</span>
+                <span className='opacity-80'>SYSTEM STATUS:</span>
                 {simStatus === 'completed' && (
                   <span className='text-success font-bold flex items-center gap-1.5'>
                     <span className='w-1.5 h-1.5 rounded-full bg-success pulse-soft' />
@@ -100,14 +100,14 @@ export function SystemDesignView() {
                 )}
               </div>
               <div className='flex items-center gap-2'>
-                <span className='opacity-50'>RECOVERY:</span>
+                <span className='opacity-80'>RECOVERY:</span>
                 <span className='text-foreground font-bold'>
                   {displayRecovery}
                 </span>
               </div>
             </div>
-            <div className='hidden sm:block opacity-40'>
-              SOL9X - RO ENGINEERING STUDIO
+            <div className='hidden sm:block opacity-70'>
+              TRANSFILM - RO ENGINEERING STUDIO
             </div>
           </div>
         </div>

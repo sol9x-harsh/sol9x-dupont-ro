@@ -64,7 +64,7 @@ const s = StyleSheet.create({
   },
   dividerCell: {
     borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.15)',
+    borderRightColor: PDF_COLORS.borderLight,
     borderRightStyle: 'solid',
   },
   cellDivider: {

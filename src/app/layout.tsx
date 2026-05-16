@@ -3,7 +3,7 @@ import './globals.css';
 import { AppProviders } from '@/providers/AppProviders';
 
 export const metadata: Metadata = {
-  title: 'SOL9X - RO Design Studio',
+  title: 'Transfilm - RO Design Studio',
   description:
     'Production-grade Reverse Osmosis engineering and design application.',
 };

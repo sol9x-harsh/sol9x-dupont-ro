@@ -247,7 +247,7 @@ function IonGroup({
                         isNeutralGroup ? 'w-1/2' : 'w-1/4',
                       )}
                     >
-                      <div className='font-bold text-[11px] text-slate-700 leading-tight'>
+                      <div className='font-bold text-[11px] text-foreground/80 leading-tight'>
                         {row.sym}
                       </div>
                     </td>
@@ -269,7 +269,7 @@ function IonGroup({
                           'h-[34px] w-full text-right text-[12px] px-2 rounded-none border-transparent bg-transparent focus:bg-transparent shadow-none focus-visible:ring-0',
                           hasValue
                             ? 'text-foreground font-medium'
-                            : 'text-muted-foreground/40 focus:text-foreground focus:font-medium',
+                            : 'text-muted-foreground/90 focus:text-foreground focus:font-medium',
                         )}
                         aria-label={`${row.name} concentration in mg/L`}
                       />
@@ -282,7 +282,7 @@ function IonGroup({
                           ) : mgL > 0 ? (
                             fmtConc(ppmCaCO3)
                           ) : (
-                            <span className='text-muted-foreground/30'>—</span>
+                            <span className='text-muted-foreground/90'>—</span>
                           )}
                         </td>
                         <td className='px-3 py-1.5 text-right font-mono text-[11px] text-muted-foreground w-1/4'>
@@ -291,7 +291,7 @@ function IonGroup({
                           ) : mgL > 0 ? (
                             fmtMeq(meqL)
                           ) : (
-                            <span className='text-muted-foreground/30'>—</span>
+                            <span className='text-muted-foreground/90'>—</span>
                           )}
                         </td>
                       </>
@@ -404,7 +404,7 @@ function FieldInput({
           className={cn(
             'h-9 font-mono text-sm border-input rounded-md px-3 border',
             readOnly
-              ? 'bg-slate-100 border-slate-200 text-slate-500 opacity-80'
+              ? 'bg-slate-100 border-slate-200 text-muted-foreground/75 opacity-80'
               : error
                 ? 'bg-red-50 border-red-400 text-red-700'
                 : 'bg-card',
@@ -881,7 +881,7 @@ export function FeedSetupView() {
                 ) : (
                   fmtTDS(blendedTDSResult.tdsMgL)
                 )}{' '}
-                <span className='text-[10px] text-slate-500 font-sans'>
+                <span className='text-[10px] text-muted-foreground/75 font-sans'>
                   mg/L
                 </span>
               </span>
@@ -897,7 +897,7 @@ export function FeedSetupView() {
                 ) : (
                   fmtConductivity(blendedConductivityResult.conductivityUsCm)
                 )}{' '}
-                <span className='text-[10px] text-slate-500 font-sans'>
+                <span className='text-[10px] text-muted-foreground/75 font-sans'>
                   µS/cm
                 </span>
               </span>
@@ -1254,10 +1254,10 @@ export function FeedSetupView() {
             <div className='p-4 flex flex-col gap-3'>
               <div className='flex items-center gap-2'>
                 <div className='w-1 h-3.5 rounded-full bg-violet-400' />
-                <span className='text-[10px] font-bold uppercase tracking-widest text-slate-500'>
+                <span className='text-[10px] font-bold uppercase tracking-widest text-muted-foreground/75'>
                   Dose Concentration
                 </span>
-                <span className='text-[10px] text-muted-foreground/40'>
+                <span className='text-[10px] text-muted-foreground/60'>
                   compound → ions
                 </span>
               </div>
@@ -1278,7 +1278,7 @@ export function FeedSetupView() {
                     placeholder='0.000'
                     onFocus={() => setInputError(false)}
                     onChange={(e) => setDoseValue(e.target.value)}
-                    className='w-24 h-9 px-3 font-mono text-sm bg-transparent outline-none border-none text-foreground placeholder:text-muted-foreground/30'
+                    className='w-24 h-9 px-3 font-mono text-sm bg-transparent outline-none border-none text-foreground placeholder:text-muted-foreground/60'
                   />
                   <div className='flex items-center px-2 bg-slate-50 border-l border-border/50'>
                     <span className='text-[10px] text-muted-foreground/60 select-none'>
@@ -1375,10 +1375,10 @@ export function FeedSetupView() {
             <div className='p-4 flex flex-col gap-3'>
               <div className='flex items-center gap-2'>
                 <div className='w-1 h-3.5 rounded-full bg-emerald-400' />
-                <span className='text-[10px] font-bold uppercase tracking-widest text-slate-500'>
+                <span className='text-[10px] font-bold uppercase tracking-widest text-muted-foreground/75'>
                   Manual Ion Addition
                 </span>
-                <span className='text-[10px] text-muted-foreground/40'>
+                <span className='text-[10px] text-muted-foreground/60'>
                   direct mg/L
                 </span>
               </div>
@@ -1400,7 +1400,7 @@ export function FeedSetupView() {
                     step='any'
                     placeholder='auto'
                     onFocus={() => setDirectInputError(false)}
-                    className='w-24 h-9 px-3 font-mono text-sm bg-transparent outline-none border-none text-foreground placeholder:text-muted-foreground/30'
+                    className='w-24 h-9 px-3 font-mono text-sm bg-transparent outline-none border-none text-foreground placeholder:text-muted-foreground/60'
                   />
                   <div className='flex items-center px-2 bg-slate-50 border-l border-border/50'>
                     <span className='text-[10px] text-muted-foreground/60 select-none'>
@@ -1408,7 +1408,7 @@ export function FeedSetupView() {
                     </span>
                   </div>
                 </div>
-                <span className='text-[10px] text-muted-foreground/40'>
+                <span className='text-[10px] text-muted-foreground/60'>
                   empty = ion default
                 </span>
               </div>
@@ -1543,7 +1543,7 @@ export function FeedSetupView() {
                   Redistribute at pH{' '}
                   <span className='font-mono'>{ph.toFixed(1)}</span>
                 </button>
-                <span className='text-[10px] text-muted-foreground/40'>
+                <span className='text-[10px] text-muted-foreground/60'>
                   CO₂ ↔ HCO₃⁻ ↔ CO₃²⁻
                 </span>
               </div>
@@ -1552,19 +1552,7 @@ export function FeedSetupView() {
         </div>
       </Card>
 
-      {/* ── Empty State Guidance ── */}
-      {!hasIons && (
-        <div className='mb-4 bg-primary/5 border border-primary/20 rounded-xl p-6 flex flex-col items-center justify-center text-center'>
-          <FlaskConical className='w-10 h-10 text-primary/40 mb-3' />
-          <h3 className='text-base font-bold text-slate-800 mb-1'>
-            Begin Feed Chemistry Configuration
-          </h3>
-          <p className='text-[13px] text-slate-600 max-w-md'>
-            This stream is currently empty. Use the Solute Configuration tools
-            above to add compounds or manually enter ion concentrations below.
-          </p>
-        </div>
-      )}
+
 
       {/* ── Ion Tables ── */}
       <div className='grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4'>

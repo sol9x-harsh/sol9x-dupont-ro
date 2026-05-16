@@ -2,7 +2,7 @@
 
 ## Overview
 
-The SOL9X calculation engine lives entirely in `src/core/`. It is a deterministic, functional engineering computation layer with no UI coupling.
+The Transfilm calculation engine lives entirely in `src/core/`. It is a deterministic, functional engineering computation layer with no UI coupling.
 
 All modules are pure TypeScript. No React. No Zustand. No side effects.
 

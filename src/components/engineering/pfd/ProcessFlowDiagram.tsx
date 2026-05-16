@@ -116,10 +116,10 @@ const InlineBadge = ({ x, y, label, color, tooltip }: { x: number; y: number; la
 const DataBadge = ({ x, y, title, val1, val2, color, tooltip }: { x: number; y: number; title: string; val1: string; val2: string; color: string; tooltip?: string }) => (
   <g transform={`translate(${x},${y})`}>
     {tooltip && <title>{tooltip}</title>}
-    <rect x={-55} y={-24} width={110} height={48} rx='6' fill='#ffffff' stroke={color} strokeWidth='1.5' filter='url(#shadow)' />
-    <text x='0' y='-10' textAnchor='middle' fontSize='8' fontWeight='800' fill={color} className="uppercase tracking-widest">{title}</text>
-    <text x='0' y='5' textAnchor='middle' fontSize='11' fontWeight='700' fontFamily='"IBM Plex Mono",monospace' fill='#0f172a'>{val1}</text>
-    <text x='0' y='17' textAnchor='middle' fontSize='9' fontWeight='600' fontFamily='"IBM Plex Mono",monospace' fill='#64748b'>({val2})</text>
+    <rect x={-70} y={-30} width={140} height={60} rx='10' fill='#ffffff' stroke={color} strokeWidth='2' filter='url(#shadow)' />
+    <text x='0' y='-13' textAnchor='middle' fontSize='8' fontWeight='800' fill={color} className="uppercase tracking-widest">{title}</text>
+    <text x='0' y='7' textAnchor='middle' fontSize='13' fontWeight='700' fontFamily='"IBM Plex Mono",monospace' fill='#0f172a'>{val1}</text>
+    <text x='0' y='21' textAnchor='middle' fontSize='10' fontWeight='600' fontFamily='"IBM Plex Mono",monospace' fill='#64748b'>({val2})</text>
   </g>
 );
 
@@ -185,11 +185,17 @@ const VesselBlock = ({ cx, cy, label, stage }: { cx: number; cy: number; label: 
       <line x1={left + 44} y1={top + h} x2={left + 64} y2={top} stroke='#94a3b8' strokeWidth='1' opacity='0.7' />
       <line x1={left + 64} y1={top + h} x2={left + 84} y2={top} stroke='#94a3b8' strokeWidth='1' opacity='0.7' />
       
-      <rect x={cx - 48} y={cy - 26} width={96} height={14} rx='2' fill='#ffffff' stroke='#94a3b8' strokeWidth='1' />
-      <text x={cx} y={cy - 16} textAnchor='middle' fontSize='8' fontWeight='700' fill='#0f172a'>{label}</text>
-      <text x={cx} y={cy + 26} textAnchor='middle' fontSize='9' fontWeight='600' fill='#64748b' fontFamily='"IBM Plex Mono",monospace'>
-        {stage.vessels}V×{stage.elements}E
-      </text>
+      {/* Vessel Label Badge */}
+      <rect x={cx - 50} y={cy - 30} width={100} height={18} rx='4' fill='#ffffff' stroke='#475569' strokeWidth='1.5' filter='url(#shadow)' />
+      <text x={cx} y={cy - 18} textAnchor='middle' fontSize='8' fontWeight='800' fill='#0f172a' className='uppercase tracking-tighter'>{label}</text>
+      
+      {/* Configuration Pill (Popped up) */}
+      <g transform={`translate(${cx}, ${cy + 28})`}>
+        <rect x={-30} y={-9} width={60} height={18} rx='9' fill='#1e293b' filter='url(#shadow)' />
+        <text x={0} y={4} textAnchor='middle' fontSize='10' fontWeight='900' fill='#ffffff' fontFamily='"IBM Plex Mono",monospace' letterSpacing='-0.5'>
+          {stage.vessels}V×{stage.elements}E
+        </text>
+      </g>
     </g>
   );
 };
@@ -217,7 +223,7 @@ export function ProcessFlowDiagram({
   })();
 
   const passStarts: number[] = [];
-  let curX = 160; 
+  let curX = 260; 
   passes.forEach(p => {
     passStarts.push(curX);
     curX += passW(p.stages.length) + PASS_SEP;
@@ -235,7 +241,7 @@ export function ProcessFlowDiagram({
         centerOnInit={true} 
         centerZoomedOut={true} 
         limitToBounds={true}
-        wheel={{ step: 0.04 }}
+        wheel={{ step: 0.01 }}
       >
         {({ zoomIn, zoomOut, resetTransform, centerView }) => (
           <>
@@ -301,25 +307,25 @@ export function ProcessFlowDiagram({
                   {/* ── MAIN REJECT HEADER ── */}
                   {(() => {
                     const firstRejectX = stg_cx(passStarts[0], passes[0].stages.length - 1) + STAGE_W / 2 + 20;
-                    const endX = totalW - 80;
+                    const endX = totalW - 140;
                     return (
                       <g>
                         <FlowPath pts={[[firstRejectX, REJECT_Y], [endX, REJECT_Y]]} color={C.reject} markerEnd='url(#arr-rej)' />
                         <InlineBadge x={endX - 30} y={REJECT_Y} label='21' color={C.reject} tooltip='Final Concentrate Stream' />
-                        <DataBadge x={endX + 40} y={REJECT_Y - 26} title='Final Concentrate' val1={`${rejectFlow.toFixed(1)} m³/h`} val2={`${rejectTDS.toFixed(0)} ppm`} color={C.reject} tooltip='Waste Stream Output' />
+                        <DataBadge x={endX + 70} y={REJECT_Y} title='Final Concentrate' val1={`${rejectFlow.toFixed(1)} m³/h`} val2={`${rejectTDS.toFixed(0)} ppm`} color={C.reject} tooltip='Waste Stream Output' />
                         <Sensor x={endX - 70} y={REJECT_Y} label='TDS' tooltip={`Conductivity Sensor\n${rejectTDS.toFixed(0)} ppm`} />
                       </g>
                     );
                   })()}
 
                   {/* ── INITIAL FEED ── */}
-                  <FlowPath pts={[[10, FLOW_Y], [passStarts[0] - 30, FLOW_Y]]} color={C.feed} />
-                  <DataBadge x={70} y={FLOW_Y - 26} title='Raw Water Feed' val1={`${feedFlow.toFixed(1)} m³/h`} val2={`${feedTDS.toFixed(0)} ppm`} color={C.feed} tooltip='Primary Inlet Feed' />
+                  <DataBadge x={120} y={FLOW_Y} title='Raw Water Feed' val1={`${feedFlow.toFixed(1)} m³/h`} val2={`${feedTDS.toFixed(0)} ppm`} color={C.feed} tooltip='Primary Inlet Feed' />
+                  <FlowPath pts={[[190, FLOW_Y], [passStarts[0] - 30, FLOW_Y]]} color={C.feed} />
                   
                   {/* ── BYPASS PATH ── */}
                   {bypassFlow > 0 && (
                     <g>
-                      <FlowPath pts={[[40, FLOW_Y], [40, 430], [totalW - 120, 430], [totalW - 120, PERIM_Y]]} color={C.feed} markerEnd='url(#arr-feed)' />
+                      <FlowPath pts={[[210, FLOW_Y], [210, 430], [totalW - 120, 430], [totalW - 120, PERIM_Y]]} color={C.feed} markerEnd='url(#arr-feed)' />
                       <InlineBadge x={(40 + totalW - 120) / 2} y={430} label='BYPASS' color={C.feed} tooltip={`Bypass Stream: ${bypassFlow.toFixed(1)} m³/h`} />
                     </g>
                   )}
@@ -414,8 +420,8 @@ export function ProcessFlowDiagram({
                               <g>
                                 <FlowPath pts={[[first_cx, PERIM_Y], [productX, PERIM_Y]]} color={C.permeate} markerEnd='url(#arr-perm)' />
                                 <InlineBadge x={(first_cx + productX)/2} y={PERIM_Y} label={labelPerm} color={C.permeate} tooltip={`Final Permeate Stream`} />
-                                <DataBadge x={productX + 60} y={PERIM_Y - 26} title='Product Water Output' val1={`${permeateFlow.toFixed(1)} m³/h`} val2={`${permeateTDS.toFixed(0)} ppm TDS`} color={C.permeate} tooltip='Final High Quality Permeate' />
-                                <Sensor x={productX + 60} y={PERIM_Y} label='TDS' tooltip={`Conductivity Sensor\n${permeateTDS.toFixed(0)} ppm`} />
+                                <DataBadge x={productX + 70} y={PERIM_Y} title='Product Water Output' val1={`${permeateFlow.toFixed(1)} m³/h`} val2={`${permeateTDS.toFixed(0)} ppm TDS`} color={C.permeate} tooltip='Final High Quality Permeate' />
+                                <Sensor x={productX + 70} y={PERIM_Y} label='TDS' tooltip={`Conductivity Sensor\n${permeateTDS.toFixed(0)} ppm`} />
                               </g>
                             );
                           }

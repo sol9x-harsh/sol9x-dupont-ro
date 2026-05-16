@@ -11,7 +11,7 @@ export interface SimulationResult {
 }
 
 /**
- * Master entry point for the SOL9X deterministic RO simulation engine.
+ * Master entry point for the Transfilm deterministic RO simulation engine.
  *
  * Validates the context, executes the deterministic pipeline, and returns
  * a fully typed simulation result. All calculations are single-pass and

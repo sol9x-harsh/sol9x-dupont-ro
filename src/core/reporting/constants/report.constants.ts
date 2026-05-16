@@ -1,5 +1,5 @@
 export const REPORT_APP_VERSION = "2026.05";
-export const REPORT_COMPANY = "SOL9X Engineering Services";
+export const REPORT_COMPANY = "Transfilm Engineering Services";
 export const REPORT_DEFAULT_CASE_NAME = "Design Case";
 export const REPORT_DEFAULT_MARKET_SEGMENT = "Industrial";
 

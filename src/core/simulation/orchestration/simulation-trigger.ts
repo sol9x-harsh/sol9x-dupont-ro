@@ -43,6 +43,7 @@ type ROConfigSnapshot = {
   passCount: number;
   chemicalAdjustment: string;
   bypassSignature: string;
+  recycleSignature: string;
   stageSignature: string; // JSON-encoded pass/stage topology + per-stage pressure drops
 };
 
@@ -71,6 +72,7 @@ function snapshotROConfig(): ROConfigSnapshot {
     passOptimizationMode,
     bypassMode,
     bypassValue,
+    concentrateRecycle,
   } = useROConfigStore.getState();
   return {
     feedFlow,
@@ -80,6 +82,7 @@ function snapshotROConfig(): ROConfigSnapshot {
     passCount: passes.length,
     chemicalAdjustment: JSON.stringify(chemicalAdjustment),
     bypassSignature: `${passOptimizationMode}-${bypassMode}-${bypassValue}`,
+    recycleSignature: JSON.stringify(concentrateRecycle),
     stageSignature: JSON.stringify(
       passes.map((p) => ({
         id: p.id,
@@ -87,6 +90,7 @@ function snapshotROConfig(): ROConfigSnapshot {
         stages: p.stages.map((s) => ({
           id: s.id,
           pressureDropBar: s.pressureDropBar,
+          recyclePercent: s.recyclePercent,
           vessels: s.vessels.map((v) => ({
             id: v.id,
             elements: v.elementsPerVessel,

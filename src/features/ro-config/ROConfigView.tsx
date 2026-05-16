@@ -39,6 +39,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Plus,
   X,
   Eye,
@@ -83,6 +93,8 @@ export function ROConfigView() {
   const [ionOpen, setIonOpen] = useState(false);
   const [conOpen, setConOpen] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
+  const [passToDelete, setPassToDelete] = useState<string | null>(null);
+  const [activeRecyclePass, setActiveRecyclePass] = useState('p1');
 
   // Pass & Stage Management
   const [passes, setPasses] = useState<string[]>(['p1']);
@@ -115,7 +127,7 @@ export function ROConfigView() {
         vessels: 42,
         elements: 7,
         pressureDrop: 0.7,
-        membraneModel: 'SW30HRLE-400i',
+        membraneModel: '',
         recyclePercent: 0,
       },
       {
@@ -123,7 +135,7 @@ export function ROConfigView() {
         vessels: 21,
         elements: 7,
         pressureDrop: 0.7,
-        membraneModel: 'SW30HRLE-400i',
+        membraneModel: '',
         recyclePercent: 0,
       },
     ],
@@ -209,6 +221,7 @@ export function ROConfigView() {
 
   // Sync Logic: Increase/Decrease rows with Pass additions/deletions
   const addPass = () => {
+    if (passes.length >= 3) return;
     const id = `p${passes.length + 1}`;
     setPasses([...passes, id]);
     setPassData({
@@ -219,7 +232,7 @@ export function ROConfigView() {
           vessels: 10,
           elements: 7,
           pressureDrop: 0.7,
-          membraneModel: 'SW30HRLE-400i',
+          membraneModel: '',
           recyclePercent: 0,
         },
       ],
@@ -253,7 +266,7 @@ export function ROConfigView() {
           id: `${passId}-${stg.id}-v${vi + 1}`,
           label: `V${vi + 1}`,
           elementsPerVessel: stg.elements,
-          membraneModel: stg.membraneModel || 'SW30HRLE-400i',
+          membraneModel: stg.membraneModel || '',
         })),
       })),
     }));
@@ -263,6 +276,18 @@ export function ROConfigView() {
   useEffect(() => {
     syncToStore();
   }, [syncToStore]);
+
+  // If global system recovery changes (e.g. from Flow Calculator), update the first pass if it's the only one.
+  useEffect(() => {
+    if (passes.length === 1) {
+      setPassRecovery((prev) => {
+        if (prev.p1 !== storeRecovery) {
+          return { ...prev, p1: storeRecovery };
+        }
+        return prev;
+      });
+    }
+  }, [storeRecovery, passes.length]);
 
   const addStage = () => {
     if (activeStages.length >= 6) return; // limit to 6 stages to prevent insane geometry, but way above 3
@@ -278,8 +303,7 @@ export function ROConfigView() {
         elements: 7,
         pressureDrop: 0.7,
         membraneModel:
-          activeStages[activeStages.length - 1]?.membraneModel ||
-          'SW30HRLE-400i',
+          activeStages[activeStages.length - 1]?.membraneModel || '',
         recyclePercent: 0,
       },
     ];
@@ -377,6 +401,36 @@ export function ROConfigView() {
       <ConstraintModal open={conOpen} onOpenChange={setConOpen} />
       <TOCModal open={tocOpen} onOpenChange={setTocOpen} />
 
+      <AlertDialog
+        open={!!passToDelete}
+        onOpenChange={(open) => !open && setPassToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Pass</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this pass? This will remove all
+              stages and configuration within this pass. This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className='bg-destructive text-white hover:bg-destructive/90'
+              onClick={() => {
+                if (passToDelete) {
+                  removePass(passToDelete);
+                }
+                setPassToDelete(null);
+              }}
+            >
+              Delete Pass
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Flow Calculator Dialog */}
       <Dialog open={flowOpen} onOpenChange={setFlowOpen}>
         <DialogContent className='max-w-[1100px] p-0 overflow-hidden bg-white'>
@@ -384,7 +438,7 @@ export function ROConfigView() {
             <DialogTitle className='font-display text-xl text-primary font-semibold'>
               Flow Calculator
             </DialogTitle>
-            <DialogDescription className='text-sm text-slate-500'>
+            <DialogDescription className='text-sm text-muted-foreground'>
               Please edit flow values for your RO system
             </DialogDescription>
           </div>
@@ -398,7 +452,7 @@ export function ROConfigView() {
                   RO Flow
                 </h3>
                 <div>
-                  <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
+                  <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
                     <span>Feed Flow Rate</span>
                     <span className='border border-slate-200 text-xs px-1.5 rounded-sm bg-white font-mono'>
                       1
@@ -415,7 +469,7 @@ export function ROConfigView() {
                       precision={2}
                       className='h-9 bg-slate-100 border-slate-200 focus-visible:ring-primary/20 rounded-sm text-left px-3'
                     />
-                    <span className='text-sm text-slate-500 min-w-[30px]'>
+                    <span className='text-sm text-muted-foreground min-w-[30px]'>
                       m³/h
                     </span>
                   </div>
@@ -429,61 +483,61 @@ export function ROConfigView() {
                 </h3>
                 <div className='flex gap-4'>
                   <div className='flex-1'>
-                    <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
+                    <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
                       <span>Feed Flow</span>
                     </div>
                     <div className='flex gap-2 items-center'>
                       <Input
                         readOnly
                         value={feedFlow.toFixed(2)}
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 rounded-sm'
+                        className='h-9 bg-slate-200/60 border-transparent text-muted-foreground rounded-sm'
                       />
-                      <span className='text-sm text-slate-500 min-w-[30px]'>
+                      <span className='text-sm text-muted-foreground min-w-[30px]'>
                         m³/h
                       </span>
                     </div>
                   </div>
                   <div className='flex-1'>
-                    <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
+                    <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
                       <span>Product Flow</span>
                     </div>
                     <div className='flex gap-2 items-center'>
                       <Input
                         readOnly
                         value={displayPermeateFlow.toFixed(2)}
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 rounded-sm'
+                        className='h-9 bg-slate-200/60 border-transparent text-muted-foreground rounded-sm'
                       />
-                      <span className='text-sm text-slate-500 min-w-[30px]'>
+                      <span className='text-sm text-muted-foreground min-w-[30px]'>
                         m³/h
                       </span>
                     </div>
                   </div>
                   <div className='flex-1'>
-                    <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
+                    <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
                       <span>Concentrate Flow</span>
                     </div>
                     <div className='flex gap-2 items-center'>
                       <Input
                         readOnly
                         value={displayConcentrateFlow.toFixed(2)}
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 rounded-sm'
+                        className='h-9 bg-slate-200/60 border-transparent text-muted-foreground rounded-sm'
                       />
-                      <span className='text-sm text-slate-500 min-w-[30px]'>
+                      <span className='text-sm text-muted-foreground min-w-[30px]'>
                         m³/h
                       </span>
                     </div>
                   </div>
                   <div className='flex-1'>
-                    <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
+                    <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
                       <span>System Recovery</span>
                     </div>
                     <div className='flex gap-2 items-center'>
                       <Input
                         readOnly
                         value={displayRecovery.toFixed(2)}
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 rounded-sm'
+                        className='h-9 bg-slate-200/60 border-transparent text-muted-foreground rounded-sm'
                       />
-                      <span className='text-sm text-slate-500 min-w-[30px]'>
+                      <span className='text-sm text-muted-foreground min-w-[30px]'>
                         %
                       </span>
                     </div>
@@ -507,13 +561,13 @@ export function ROConfigView() {
                       checked
                       className='accent-primary w-4 h-4 cursor-pointer'
                     />
-                    <span className='text-sm font-medium text-slate-700'>
+                    <span className='text-sm font-medium text-foreground/90'>
                       Net
                     </span>
                   </div>
 
                   <div>
-                    <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
+                    <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
                       <span>Net Feed</span>
                       <span className='border border-slate-200 text-xs px-1.5 rounded-sm bg-white font-mono'>
                         5
@@ -523,16 +577,16 @@ export function ROConfigView() {
                       <Input
                         readOnly
                         value={feedFlow.toFixed(2)}
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 rounded-sm'
+                        className='h-9 bg-slate-200/60 border-transparent text-muted-foreground rounded-sm'
                       />
-                      <span className='text-sm text-slate-500 min-w-[30px]'>
+                      <span className='text-sm text-muted-foreground min-w-[30px]'>
                         m³/h
                       </span>
                     </div>
                   </div>
 
                   <div>
-                    <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
+                    <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
                       <span>Net Recovery</span>
                       <span className='border border-slate-200 text-xs px-1.5 rounded-sm bg-white font-mono'>
                         8/5
@@ -551,11 +605,11 @@ export function ROConfigView() {
                         max={100}
                         className='h-9 bg-white border-slate-200 focus-visible:ring-primary/20 rounded-sm text-left px-3'
                       />
-                      <span className='text-sm text-slate-500 min-w-[30px]'>
+                      <span className='text-sm text-muted-foreground min-w-[30px]'>
                         %
                       </span>
                     </div>
-                    <p className='text-[10px] text-slate-400 mt-1.5'>
+                    <p className='text-[10px] text-muted-foreground/80 mt-1.5'>
                       Recommended Range 1 – 90
                     </p>
                   </div>
@@ -569,7 +623,7 @@ export function ROConfigView() {
                 </h3>
                 <div className='space-y-4'>
                   <div>
-                    <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
+                    <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
                       <span>Permeate Flow</span>
                       <span className='border border-slate-200 text-xs px-1.5 rounded-sm bg-white font-mono'>
                         8
@@ -579,16 +633,16 @@ export function ROConfigView() {
                       <Input
                         readOnly
                         value={displayPermeateFlow.toFixed(2)}
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 rounded-sm'
+                        className='h-9 bg-slate-200/60 border-transparent text-muted-foreground rounded-sm'
                       />
-                      <span className='text-sm text-slate-500 min-w-[30px]'>
+                      <span className='text-sm text-muted-foreground min-w-[30px]'>
                         m³/h
                       </span>
                     </div>
                   </div>
 
                   <div>
-                    <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
+                    <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
                       <span>Flux</span>
                     </div>
                     <div className='flex gap-2 items-center'>
@@ -597,31 +651,44 @@ export function ROConfigView() {
                         value={
                           displayFlux > 0 ? displayFlux.toFixed(2) : '0.00'
                         }
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 rounded-sm'
+                        className='h-9 bg-slate-200/60 border-transparent text-muted-foreground rounded-sm'
                       />
                       <div className='h-9 bg-slate-200/60 px-2 flex items-center justify-center rounded-sm'>
-                        <span className='text-sm text-slate-500'>LMH</span>
+                        <span className='text-sm text-muted-foreground'>LMH</span>
                       </div>
                     </div>
                   </div>
 
-                  <div>
-                    <div className='flex justify-between text-sm text-slate-600 mb-1.5'>
-                      <span>Concentrate Flow</span>
-                      <span className='border border-slate-200 text-xs px-1.5 rounded-sm bg-white font-mono'>
-                        10
-                      </span>
-                    </div>
-                    <div className='flex gap-2 items-center'>
-                      <Input
-                        readOnly
-                        value={displayConcentrateFlow.toFixed(2)}
-                        className='h-9 bg-slate-200/60 border-transparent text-slate-500 rounded-sm'
-                      />
-                      <span className='text-sm text-slate-500 min-w-[30px]'>
-                        m³/h
-                      </span>
-                    </div>
+                  <div className='space-y-4'>
+                    {passes.map((pId, idx) => {
+                      // Find the cumulative stage index for the last stage of this pass
+                      let cumulativeIdx = -1;
+                      for (let i = 0; i <= idx; i++) {
+                        cumulativeIdx += (passData[passes[i]] || []).length;
+                      }
+                      const pFlow = simOutput?.hydraulics?.flows?.stages[cumulativeIdx]?.concentrateFlowM3h ?? 0;
+                      
+                      return (
+                        <div key={`flow-conc-${pId}`}>
+                          <div className='flex justify-between text-sm text-muted-foreground/90 mb-1.5'>
+                            <span>Pass {idx + 1} Conc Flow</span>
+                            <span className='border border-slate-200 text-xs px-1.5 rounded-sm bg-white font-mono'>
+                              {10 + idx}
+                            </span>
+                          </div>
+                          <div className='flex gap-2 items-center'>
+                            <Input
+                              readOnly
+                              value={pFlow.toFixed(2)}
+                              className='h-9 bg-slate-200/60 border-transparent text-muted-foreground rounded-sm'
+                            />
+                            <span className='text-sm text-muted-foreground min-w-[30px]'>
+                              m³/h
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -631,67 +698,89 @@ export function ROConfigView() {
                 <h3 className='text-[15px] font-medium text-primary mb-4'>
                   Concentrate Recycle
                 </h3>
-                <div className='space-y-5'>
-                  <div className='flex items-center gap-2'>
-                    <input
-                      type='checkbox'
-                      checked={concentrateRecycle.enabled}
-                      onChange={(e) => setConcentrateRecycle({ enabled: e.target.checked })}
-                      className='accent-primary w-4 h-4 rounded-sm border-slate-300 cursor-pointer'
-                    />
-                    <span className='text-sm font-medium text-slate-700'>
-                      Pass 1
-                    </span>
+                <div className='space-y-4'>
+                  <div className='flex flex-wrap gap-2 mb-2'>
+                    {passes.map((pId, idx) => (
+                      <button
+                        key={pId}
+                        onClick={() => setActiveRecyclePass(pId)}
+                        className={cn(
+                          'px-3 py-1 text-[10px] font-bold rounded border transition-all',
+                          activeRecyclePass === pId 
+                            ? 'bg-primary/10 border-primary text-primary shadow-sm' 
+                            : 'bg-slate-50 border-slate-200 text-muted-foreground hover:border-slate-300'
+                        )}
+                      >
+                        Pass {idx + 1}
+                      </button>
+                    ))}
                   </div>
 
-                  <div className='flex gap-4 items-center'>
-                    <div className='flex items-center gap-2 flex-1'>
-                      <input
-                        type='radio'
-                        name='recycleMode'
-                        checked={concentrateRecycle.mode === 'Percent'}
-                        onChange={() => setConcentrateRecycle({ mode: 'Percent' })}
-                        disabled={!concentrateRecycle.enabled}
-                        className='w-4 h-4 accent-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
-                      />
-                      <NumericInput
-                        disabled={!concentrateRecycle.enabled || concentrateRecycle.mode !== 'Percent'}
-                        value={concentrateRecycle.mode === 'Percent' ? concentrateRecycle.value : 0}
-                        onChange={(val) => {
-                          if (val >= 0 && val <= 100) {
-                            setConcentrateRecycle({ value: val });
-                          }
-                        }}
-                        precision={2}
-                        className='h-9 bg-slate-50 border-slate-200 text-slate-700 flex-1 rounded-sm px-2 disabled:opacity-50'
-                      />
-                      <span className='text-sm text-slate-500 w-[20px]'>%</span>
-                    </div>
-                    <div className='flex items-center gap-2 flex-1'>
-                      <input
-                        type='radio'
-                        name='recycleMode'
-                        checked={concentrateRecycle.mode === 'Flow'}
-                        onChange={() => setConcentrateRecycle({ mode: 'Flow' })}
-                        disabled={!concentrateRecycle.enabled}
-                        className='w-4 h-4 accent-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
-                      />
-                      <NumericInput
-                        disabled={!concentrateRecycle.enabled || concentrateRecycle.mode !== 'Flow'}
-                        value={concentrateRecycle.mode === 'Flow' ? concentrateRecycle.value : 0}
-                        onChange={(val) => {
-                          if (val >= 0) {
-                            setConcentrateRecycle({ value: val });
-                          }
-                        }}
-                        precision={2}
-                        className='h-9 bg-slate-50 border-slate-200 text-slate-700 flex-1 rounded-sm px-2 disabled:opacity-50'
-                      />
-                      <span className='text-sm text-slate-500 w-[30px]'>
-                        m³/h
-                      </span>
-                    </div>
-                  </div>
+                  {(() => {
+                    const currentRecycle = concentrateRecycle[activeRecyclePass] || { enabled: false, mode: 'Percent', value: 0 };
+                    return (
+                      <div className='space-y-5 animate-in fade-in slide-in-from-top-1 duration-200'>
+                        <div className='flex items-center gap-2'>
+                          <input
+                            type='checkbox'
+                            checked={currentRecycle.enabled}
+                            onChange={(e) => setConcentrateRecycle(activeRecyclePass, { enabled: e.target.checked })}
+                            className='accent-primary w-4 h-4 rounded-sm border-slate-300 cursor-pointer'
+                          />
+                          <span className='text-sm font-medium text-foreground/90'>
+                            Enable Recycle
+                          </span>
+                        </div>
+
+                        <div className='flex gap-4 items-center'>
+                          <div className='flex items-center gap-2 flex-1'>
+                            <input
+                              type='radio'
+                              name={`recycleMode-${activeRecyclePass}`}
+                              checked={currentRecycle.mode === 'Percent'}
+                              onChange={() => setConcentrateRecycle(activeRecyclePass, { mode: 'Percent' })}
+                              disabled={!currentRecycle.enabled}
+                              className='w-4 h-4 accent-primary cursor-pointer disabled:opacity-50'
+                            />
+                            <NumericInput
+                              disabled={!currentRecycle.enabled || currentRecycle.mode !== 'Percent'}
+                              value={currentRecycle.mode === 'Percent' ? currentRecycle.value : 0}
+                              onChange={(val) => {
+                                if (val >= 0 && val <= 100) {
+                                  setConcentrateRecycle(activeRecyclePass, { value: val });
+                                }
+                              }}
+                              precision={2}
+                              className='h-9 bg-slate-50 border-slate-200 text-foreground/90 flex-1 rounded-sm px-2 disabled:opacity-50 font-mono text-xs'
+                            />
+                            <span className='text-sm text-muted-foreground w-[20px]'>%</span>
+                          </div>
+                          <div className='flex items-center gap-2 flex-1'>
+                            <input
+                              type='radio'
+                              name={`recycleMode-${activeRecyclePass}`}
+                              checked={currentRecycle.mode === 'Flow'}
+                              onChange={() => setConcentrateRecycle(activeRecyclePass, { mode: 'Flow' })}
+                              disabled={!currentRecycle.enabled}
+                              className='w-4 h-4 accent-primary cursor-pointer disabled:opacity-50'
+                            />
+                            <NumericInput
+                              disabled={!currentRecycle.enabled || currentRecycle.mode !== 'Flow'}
+                              value={currentRecycle.mode === 'Flow' ? currentRecycle.value : 0}
+                              onChange={(val) => {
+                                if (val >= 0) {
+                                  setConcentrateRecycle(activeRecyclePass, { value: val });
+                                }
+                              }}
+                              precision={2}
+                              className='h-9 bg-slate-50 border-slate-200 text-foreground/90 flex-1 rounded-sm px-2 disabled:opacity-50 font-mono text-xs'
+                            />
+                            <span className='text-sm text-muted-foreground w-[30px] text-[10px]'>m³/h</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -710,7 +799,7 @@ export function ROConfigView() {
                         name='passOpt'
                         className='accent-primary w-4 h-4 cursor-pointer'
                       />
-                      <span className='text-sm font-medium text-slate-700'>
+                      <span className='text-sm font-medium text-foreground/90'>
                         Bypass
                       </span>
                     </div>
@@ -722,7 +811,7 @@ export function ROConfigView() {
                         name='passOpt'
                         className='accent-primary w-4 h-4 cursor-pointer'
                       />
-                      <span className='text-sm font-medium text-slate-700'>
+                      <span className='text-sm font-medium text-foreground/90'>
                         None
                       </span>
                     </div>
@@ -731,7 +820,7 @@ export function ROConfigView() {
                   {passOptimizationMode === 'Bypass' && (
                     <div className='space-y-3 pt-2'>
                       <div className='flex justify-between items-end'>
-                        <span className='text-sm text-slate-600 mb-2'>
+                        <span className='text-sm text-muted-foreground/90 mb-2'>
                           To System Permeate
                         </span>
                         <span className='border border-slate-200 text-xs px-1.5 rounded-sm bg-white font-mono mb-1'>
@@ -755,9 +844,9 @@ export function ROConfigView() {
                             }
                           }}
                           precision={2}
-                          className='h-9 bg-slate-50 border-slate-200 text-slate-700 flex-1 rounded-sm px-2'
+                          className='h-9 bg-slate-50 border-slate-200 text-foreground/90 flex-1 rounded-sm px-2'
                         />
-                        <span className='text-sm text-slate-500 w-[30px]'>
+                        <span className='text-sm text-muted-foreground w-[30px]'>
                           %
                         </span>
                       </div>
@@ -784,9 +873,9 @@ export function ROConfigView() {
                             }
                           }}
                           precision={2}
-                          className='h-9 bg-slate-50 border-slate-200 text-slate-700 flex-1 rounded-sm px-2'
+                          className='h-9 bg-slate-50 border-slate-200 text-foreground/90 flex-1 rounded-sm px-2'
                         />
-                        <span className='text-sm text-slate-500 w-[30px]'>
+                        <span className='text-sm text-muted-foreground w-[30px]'>
                           m³/h
                         </span>
                       </div>
@@ -801,7 +890,7 @@ export function ROConfigView() {
             <Button
               variant='outline'
               onClick={() => setFlowOpen(false)}
-              className='rounded-full px-6 text-slate-700 border-slate-300 hover:bg-slate-50'
+              className='rounded-full px-6 text-foreground/90 border-slate-300 hover:bg-slate-50'
             >
               Cancel
             </Button>
@@ -843,7 +932,7 @@ export function ROConfigView() {
                   <span
                     className={cn(
                       'text-sm font-bold',
-                      phDownOn ? 'text-primary' : 'text-slate-600',
+                      phDownOn ? 'text-primary' : 'text-muted-foreground/90',
                     )}
                   >
                     ↓ pH
@@ -864,7 +953,7 @@ export function ROConfigView() {
                         'text-[8px] font-bold absolute tracking-wider',
                         phDownOn
                           ? 'left-1.5 text-white'
-                          : 'right-1.5 text-slate-500',
+                          : 'right-1.5 text-muted-foreground',
                       )}
                     >
                       {phDownOn ? 'ON' : 'OFF'}
@@ -892,7 +981,7 @@ export function ROConfigView() {
                         'h-8 text-xs',
                         phDownOn
                           ? 'border-primary/40 bg-primary/5 text-primary font-semibold'
-                          : 'bg-slate-50 border-transparent text-slate-400',
+                          : 'bg-slate-50 border-transparent text-muted-foreground/80',
                       )}
                     >
                       <SelectValue />
@@ -914,7 +1003,7 @@ export function ROConfigView() {
                       precision={2}
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0 text-left',
-                        phDownOn ? 'bg-white text-slate-800' : 'bg-slate-50',
+                        phDownOn ? 'bg-white text-foreground/80' : 'bg-slate-50',
                       )}
                     />
                     <div className='px-2 text-[10px] text-muted-foreground border-l border-border bg-muted/20 h-full flex items-center font-bold'>
@@ -932,7 +1021,7 @@ export function ROConfigView() {
                       readOnly
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0',
-                        phDownOn ? 'bg-white text-slate-800' : 'bg-slate-50',
+                        phDownOn ? 'bg-white text-foreground/80' : 'bg-slate-50',
                       )}
                     />
                     <div className='px-2 text-[10px] text-muted-foreground border-l border-border bg-muted/20 h-full flex items-center font-bold'>
@@ -955,7 +1044,7 @@ export function ROConfigView() {
                   <span
                     className={cn(
                       'text-sm font-bold',
-                      degasOn ? 'text-primary' : 'text-slate-600',
+                      degasOn ? 'text-primary' : 'text-muted-foreground/90',
                     )}
                   >
                     Degas
@@ -976,7 +1065,7 @@ export function ROConfigView() {
                         'text-[8px] font-bold absolute tracking-wider',
                         degasOn
                           ? 'left-1.5 text-white'
-                          : 'right-1.5 text-slate-500',
+                          : 'right-1.5 text-muted-foreground',
                       )}
                     >
                       {degasOn ? 'ON' : 'OFF'}
@@ -1003,7 +1092,7 @@ export function ROConfigView() {
                       disabled={!degasOn}
                     />
                     <div className='flex-1'>
-                      <span className='text-[10px] leading-tight text-slate-500 font-medium block'>
+                      <span className='text-[10px] leading-tight text-muted-foreground font-medium block'>
                         CO₂ %<br />
                         Removal
                       </span>
@@ -1025,7 +1114,7 @@ export function ROConfigView() {
                         className={cn(
                           'h-full flex-1 border-0 rounded-none text-xs font-mono px-1.5 focus-visible:ring-0 text-right',
                           degasOn && degasMode === 'CO2 % Removal'
-                            ? 'bg-white text-slate-800'
+                            ? 'bg-white text-foreground/80'
                             : 'bg-slate-50',
                         )}
                       />
@@ -1047,7 +1136,7 @@ export function ROConfigView() {
                       disabled={!degasOn}
                     />
                     <div className='flex-1'>
-                      <span className='text-[10px] leading-tight text-slate-500 font-medium block'>
+                      <span className='text-[10px] leading-tight text-muted-foreground font-medium block'>
                         CO₂ Partial
                         <br />
                         Pressure
@@ -1072,7 +1161,7 @@ export function ROConfigView() {
                         className={cn(
                           'h-full flex-1 border-0 rounded-none text-xs font-mono px-1.5 focus-visible:ring-0 text-right',
                           degasOn && degasMode === 'CO2 Partial Pressure'
-                            ? 'bg-white text-slate-800'
+                            ? 'bg-white text-foreground/80'
                             : 'bg-slate-50',
                         )}
                       />
@@ -1096,7 +1185,7 @@ export function ROConfigView() {
                       />
                     </div>
                     <div className='flex-1 pt-1'>
-                      <span className='text-[10px] leading-tight text-slate-500 font-medium block'>
+                      <span className='text-[10px] leading-tight text-muted-foreground font-medium block'>
                         CO₂
                         <br />
                         Concentration
@@ -1122,7 +1211,7 @@ export function ROConfigView() {
                           className={cn(
                             'h-full flex-1 border-0 rounded-none text-xs font-mono px-1 focus-visible:ring-0 text-right',
                             degasOn && degasMode === 'CO2 Concentration'
-                              ? 'bg-white text-slate-800'
+                              ? 'bg-white text-foreground/80'
                               : 'bg-slate-50',
                           )}
                         />
@@ -1130,7 +1219,7 @@ export function ROConfigView() {
                           mg/L
                         </div>
                       </div>
-                      <span className='text-[8px] text-slate-400 mt-1 font-medium'>
+                      <span className='text-[8px] text-muted-foreground/80 mt-1 font-medium'>
                         Range 1-100
                       </span>
                     </div>
@@ -1151,7 +1240,7 @@ export function ROConfigView() {
                   <span
                     className={cn(
                       'text-sm font-bold',
-                      phUpOn ? 'text-primary' : 'text-slate-600',
+                      phUpOn ? 'text-primary' : 'text-muted-foreground/90',
                     )}
                   >
                     ↑ pH
@@ -1172,7 +1261,7 @@ export function ROConfigView() {
                         'text-[8px] font-bold absolute tracking-wider',
                         phUpOn
                           ? 'left-1.5 text-white'
-                          : 'right-1.5 text-slate-500',
+                          : 'right-1.5 text-muted-foreground',
                       )}
                     >
                       {phUpOn ? 'ON' : 'OFF'}
@@ -1200,7 +1289,7 @@ export function ROConfigView() {
                         'h-8 text-xs',
                         phUpOn
                           ? 'border-primary/40 bg-primary/5 text-primary font-semibold'
-                          : 'bg-slate-50 border-transparent text-slate-400',
+                          : 'bg-slate-50 border-transparent text-muted-foreground/80',
                       )}
                     >
                       <SelectValue />
@@ -1221,7 +1310,7 @@ export function ROConfigView() {
                       precision={2}
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0 text-left',
-                        phUpOn ? 'bg-white text-slate-800' : 'bg-slate-50',
+                        phUpOn ? 'bg-white text-foreground/80' : 'bg-slate-50',
                       )}
                     />
                     <div className='px-2 text-[10px] text-muted-foreground border-l border-border bg-muted/20 h-full flex items-center font-bold'>
@@ -1237,7 +1326,7 @@ export function ROConfigView() {
                       readOnly
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0',
-                        phUpOn ? 'bg-white text-slate-800' : 'bg-slate-50',
+                        phUpOn ? 'bg-white text-foreground/80' : 'bg-slate-50',
                       )}
                     />
                     <div className='px-2 text-[10px] text-muted-foreground border-l border-border bg-muted/20 h-full flex items-center font-bold'>
@@ -1260,7 +1349,7 @@ export function ROConfigView() {
                   <span
                     className={cn(
                       'text-sm font-bold',
-                      antiScalantOn ? 'text-primary' : 'text-slate-600',
+                      antiScalantOn ? 'text-primary' : 'text-muted-foreground/90',
                     )}
                   >
                     Anti-Scalant
@@ -1283,7 +1372,7 @@ export function ROConfigView() {
                         'text-[8px] font-bold absolute tracking-wider',
                         antiScalantOn
                           ? 'left-1.5 text-white'
-                          : 'right-1.5 text-slate-500',
+                          : 'right-1.5 text-muted-foreground',
                       )}
                     >
                       {antiScalantOn ? 'ON' : 'OFF'}
@@ -1311,7 +1400,7 @@ export function ROConfigView() {
                         'h-8 text-xs',
                         antiScalantOn
                           ? 'border-primary/40 bg-primary/5 text-primary font-semibold'
-                          : 'bg-slate-50 border-transparent text-slate-400',
+                          : 'bg-slate-50 border-transparent text-muted-foreground/80',
                       )}
                     >
                       <SelectValue />
@@ -1335,7 +1424,7 @@ export function ROConfigView() {
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0 text-left',
                         antiScalantOn
-                          ? 'bg-white text-slate-800'
+                          ? 'bg-white text-foreground/80'
                           : 'bg-slate-50',
                       )}
                     />
@@ -1359,7 +1448,7 @@ export function ROConfigView() {
                   <span
                     className={cn(
                       'text-sm font-bold',
-                      dechlorinatorOn ? 'text-primary' : 'text-slate-600',
+                      dechlorinatorOn ? 'text-primary' : 'text-muted-foreground/90',
                     )}
                   >
                     Dechlorinator
@@ -1382,7 +1471,7 @@ export function ROConfigView() {
                         'text-[8px] font-bold absolute tracking-wider',
                         dechlorinatorOn
                           ? 'left-1.5 text-white'
-                          : 'right-1.5 text-slate-500',
+                          : 'right-1.5 text-muted-foreground',
                       )}
                     >
                       {dechlorinatorOn ? 'ON' : 'OFF'}
@@ -1410,7 +1499,7 @@ export function ROConfigView() {
                         'h-8 text-xs',
                         dechlorinatorOn
                           ? 'border-primary/40 bg-primary/5 text-primary font-semibold'
-                          : 'bg-slate-50 border-transparent text-slate-400',
+                          : 'bg-slate-50 border-transparent text-muted-foreground/80',
                       )}
                     >
                       <SelectValue />
@@ -1432,7 +1521,7 @@ export function ROConfigView() {
                       className={cn(
                         'h-full flex-1 border-0 rounded-none text-xs font-mono px-2 focus-visible:ring-0 text-left',
                         dechlorinatorOn
-                          ? 'bg-white text-slate-800'
+                          ? 'bg-white text-foreground/80'
                           : 'bg-slate-50',
                       )}
                     />
@@ -1449,7 +1538,7 @@ export function ROConfigView() {
               <div className='lg:col-span-3 border border-border rounded-xl overflow-x-auto shadow-sm'>
                 <table className='w-full text-xs text-left min-w-[560px]'>
                   <thead>
-                    <tr className='bg-slate-100/80 text-slate-700 font-bold border-b border-border'>
+                    <tr className='bg-slate-100/80 text-foreground/90 font-bold border-b border-border'>
                       <th className='py-3 px-4 w-[28%]'>Measurement</th>
                       <th className='py-3 px-4'>Feed (Raw)</th>
                       {phDownOn && (
@@ -1461,10 +1550,10 @@ export function ROConfigView() {
                       {phUpOn && (
                         <th className='py-3 px-4 text-emerald-600'>After Base</th>
                       )}
-                      <th className='py-3 px-4 text-slate-500'>Concentrate</th>
+                      <th className='py-3 px-4 text-muted-foreground'>Concentrate</th>
                     </tr>
                   </thead>
-                  <tbody className='divide-y divide-border bg-white font-medium text-slate-600'>
+                  <tbody className='divide-y divide-border bg-white font-medium text-muted-foreground/90'>
                     {tableData.map((row, i) => {
                       const isScalingRow = row.label.includes('*');
                       return (
@@ -1511,7 +1600,7 @@ export function ROConfigView() {
               {/* Side Panels */}
               <div className='lg:col-span-1 space-y-4'>
                 <div className='border border-border rounded-xl p-4 shadow-sm bg-white'>
-                  <h4 className='text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3'>
+                  <h4 className='text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-3'>
                     Temperature Case
                   </h4>
                   <Select
@@ -1531,9 +1620,9 @@ export function ROConfigView() {
                     <Input
                       readOnly
                       value={systemTemperature.toFixed(1)}
-                      className='flex-1 h-full border-0 bg-transparent rounded-none px-2 text-xs font-mono text-slate-700 font-semibold focus-visible:ring-0'
+                      className='flex-1 h-full border-0 bg-transparent rounded-none px-2 text-xs font-mono text-foreground/90 font-semibold focus-visible:ring-0'
                     />
-                    <div className='px-3 h-full flex items-center justify-center bg-white border-l border-border text-[10px] font-bold text-slate-400'>
+                    <div className='px-3 h-full flex items-center justify-center bg-white border-l border-border text-[10px] font-bold text-muted-foreground/80'>
                       °C
                     </div>
                   </div>
@@ -1543,7 +1632,7 @@ export function ROConfigView() {
                 </div>
 
                 <div className='border border-border rounded-xl p-4 shadow-sm bg-white'>
-                  <h4 className='text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3'>
+                  <h4 className='text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-3'>
                     RO Recovery
                   </h4>
                   <Select defaultValue='Based on RO'>
@@ -1560,9 +1649,9 @@ export function ROConfigView() {
                     <Input
                       readOnly
                       value={displayRecovery.toFixed(2)}
-                      className='flex-1 h-full border-0 bg-transparent rounded-none px-2 text-xs font-mono text-slate-500 focus-visible:ring-0'
+                      className='flex-1 h-full border-0 bg-transparent rounded-none px-2 text-xs font-mono text-muted-foreground focus-visible:ring-0'
                     />
-                    <div className='px-3 h-full flex items-center justify-center bg-white border-l border-border text-[10px] font-bold text-slate-400'>
+                    <div className='px-3 h-full flex items-center justify-center bg-white border-l border-border text-[10px] font-bold text-muted-foreground/80'>
                       %
                     </div>
                   </div>
@@ -1707,7 +1796,7 @@ export function ROConfigView() {
                 <span
                   className={cn(
                     'text-[9px] font-mono leading-none',
-                    activePass === p ? 'text-primary/70' : 'text-slate-400',
+                    activePass === p ? 'text-primary/70' : 'text-muted-foreground/80',
                   )}
                 >
                   {(passRecovery[p] ?? storeRecovery).toFixed(0)}%
@@ -1717,7 +1806,7 @@ export function ROConfigView() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    removePass(p);
+                    setPassToDelete(p);
                   }}
                   className='absolute -top-1 -right-1 w-4 h-4 bg-destructive text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm border border-white'
                 >
@@ -1730,7 +1819,8 @@ export function ROConfigView() {
             variant='ghost'
             size='sm'
             onClick={addPass}
-            className='h-9 px-4 text-[10px] font-bold text-primary hover:bg-white rounded-lg gap-1.5'
+            disabled={passes.length >= 3}
+            className='h-9 px-4 text-[10px] font-bold text-primary hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed rounded-lg gap-1.5'
           >
             <Plus className='w-3.5 h-3.5' /> ADD PASS
           </Button>
@@ -1774,7 +1864,7 @@ export function ROConfigView() {
               variant='outline'
               size='sm'
               onClick={btn.onClick}
-              className='h-9 rounded-xl border-border bg-white text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-primary hover:border-primary/30 transition-all gap-2 px-4 shadow-sm relative'
+              className='h-9 rounded-xl border-border bg-white text-[11px] font-bold text-muted-foreground/90 hover:bg-slate-50 hover:text-primary hover:border-primary/30 transition-all gap-2 px-4 shadow-sm relative'
             >
               <btn.icon className={cn('w-3.5 h-3.5', btn.color)} />
               {btn.label}
@@ -1798,10 +1888,10 @@ export function ROConfigView() {
               <Settings2 className='w-4 h-4 text-primary' />
             </div>
             <div>
-              <h3 className='text-[11px] uppercase tracking-[0.2em] text-slate-400 font-bold'>
+              <h3 className='text-[11px] uppercase tracking-[0.2em] text-muted-foreground/80 font-bold'>
                 Design Settings
               </h3>
-              <div className='text-xs font-bold text-slate-700'>
+              <div className='text-xs font-bold text-foreground/90'>
                 Pass {passes.indexOf(activePass) + 1} Configuration
               </div>
             </div>
@@ -1810,7 +1900,7 @@ export function ROConfigView() {
           <div className='space-y-6'>
             {/* Per-pass Recovery */}
             <div className='space-y-2'>
-              <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
+              <div className='text-[10px] text-muted-foreground font-bold uppercase tracking-wider'>
                 Pass Recovery
               </div>
               <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all'>
@@ -1842,7 +1932,7 @@ export function ROConfigView() {
 
             {/* Per-pass Flow Factor */}
             <div className='space-y-2'>
-              <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
+              <div className='text-[10px] text-muted-foreground font-bold uppercase tracking-wider'>
                 Flow Factor
               </div>
               <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all'>
@@ -1868,7 +1958,7 @@ export function ROConfigView() {
 
             {/* Per-pass Permeate Back Pressure */}
             <div className='space-y-2'>
-              <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
+              <div className='text-[10px] text-muted-foreground font-bold uppercase tracking-wider'>
                 Permeate Back Pressure
               </div>
               <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all'>
@@ -1890,7 +1980,7 @@ export function ROConfigView() {
 
             <div className='space-y-3'>
               <div className='flex justify-between items-center'>
-                <span className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
+                <span className='text-[10px] text-muted-foreground font-bold uppercase tracking-wider'>
                   No of Stages
                 </span>
                 <span className='text-[10px] font-mono text-primary font-bold bg-primary/5 px-2 py-0.5 rounded'>
@@ -1900,16 +1990,16 @@ export function ROConfigView() {
               <div className='flex items-center bg-slate-50 border border-border rounded-xl h-11 overflow-hidden w-full shadow-inner'>
                 <button
                   onClick={removeStage}
-                  className='w-12 h-full flex items-center justify-center hover:bg-white hover:text-primary text-slate-400 border-r border-border transition-colors text-lg'
+                  className='w-12 h-full flex items-center justify-center hover:bg-white hover:text-primary text-muted-foreground/80 border-r border-border transition-colors text-lg'
                 >
                   −
                 </button>
-                <div className='flex-1 text-center font-display font-bold text-base text-slate-700'>
+                <div className='flex-1 text-center font-display font-bold text-base text-foreground/90'>
                   {activeStages.length}
                 </div>
                 <button
                   onClick={addStage}
-                  className='w-12 h-full flex items-center justify-center hover:bg-white hover:text-primary text-slate-400 border-l border-border transition-colors text-lg'
+                  className='w-12 h-full flex items-center justify-center hover:bg-white hover:text-primary text-muted-foreground/80 border-l border-border transition-colors text-lg'
                 >
                   +
                 </button>
@@ -1918,7 +2008,7 @@ export function ROConfigView() {
 
             {/* Temp Correction (read-only) */}
             <div className='space-y-2'>
-              <div className='text-[10px] text-slate-500 font-bold uppercase tracking-wider'>
+              <div className='text-[10px] text-muted-foreground font-bold uppercase tracking-wider'>
                 Temp Correction
               </div>
               <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden'>
@@ -1936,20 +2026,20 @@ export function ROConfigView() {
           <div className='flex items-center justify-between mb-8'>
             <div className='flex items-center gap-2'>
               <div className='w-2 h-2 rounded-full bg-primary' />
-              <h3 className='text-[11px] uppercase tracking-[0.2em] text-slate-400 font-bold'>
+              <h3 className='text-[11px] uppercase tracking-[0.2em] text-muted-foreground/80 font-bold'>
                 Real-time Pass Metrics
               </h3>
             </div>
             <div className='flex items-center gap-4'>
               <div className='flex items-center gap-1.5'>
                 <span className='w-2 h-2 rounded-full bg-emerald-500' />
-                <span className='text-[10px] font-bold text-slate-500'>
+                <span className='text-[10px] font-bold text-muted-foreground'>
                   HEALTHY
                 </span>
               </div>
               <Badge
                 variant='outline'
-                className='font-mono text-[10px] bg-slate-50 text-slate-500 border-border px-3'
+                className='font-mono text-[10px] bg-slate-50 text-muted-foreground border-border px-3'
               >
                 UPDATED: 12:42 UTC
               </Badge>
@@ -1961,11 +2051,11 @@ export function ROConfigView() {
             <div className='p-4 rounded-2xl border border-border/50 bg-slate-50/30 group hover:border-primary/20 transition-all'>
               <div className='flex items-center justify-between mb-3'>
                 <div className='w-7 h-7 rounded-lg bg-white border border-border/50 flex items-center justify-center shadow-sm'>
-                  <Zap className='w-3.5 h-3.5 text-slate-400' />
+                  <Zap className='w-3.5 h-3.5 text-muted-foreground/80' />
                 </div>
               </div>
               <div className='flex flex-col'>
-                <span className='text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate mb-2'>
+                <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Net Feed
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm'>
@@ -1987,11 +2077,11 @@ export function ROConfigView() {
             <div className='p-4 rounded-2xl border border-border/50 bg-slate-50/30 group hover:border-primary/20 transition-all'>
               <div className='flex items-center justify-between mb-3'>
                 <div className='w-7 h-7 rounded-lg bg-white border border-border/50 flex items-center justify-center shadow-sm'>
-                  <Layers className='w-3.5 h-3.5 text-slate-400' />
+                  <Layers className='w-3.5 h-3.5 text-muted-foreground/80' />
                 </div>
               </div>
               <div className='flex flex-col'>
-                <span className='text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate mb-2'>
+                <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Net Recovery
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm'>
@@ -2016,11 +2106,11 @@ export function ROConfigView() {
             <div className='p-4 rounded-2xl border border-border/50 bg-slate-50/30 group hover:border-primary/20 transition-all'>
               <div className='flex items-center justify-between mb-3'>
                 <div className='w-7 h-7 rounded-lg bg-white border border-border/50 flex items-center justify-center shadow-sm'>
-                  <Droplets className='w-3.5 h-3.5 text-slate-400' />
+                  <Droplets className='w-3.5 h-3.5 text-muted-foreground/80' />
                 </div>
               </div>
               <div className='flex flex-col'>
-                <span className='text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate mb-2'>
+                <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Permeate Flow
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm'>
@@ -2050,11 +2140,11 @@ export function ROConfigView() {
             <div className='p-4 rounded-2xl border border-border/50 bg-slate-50/30 group hover:border-primary/20 transition-all'>
               <div className='flex items-center justify-between mb-3'>
                 <div className='w-7 h-7 rounded-lg bg-white border border-border/50 flex items-center justify-center shadow-sm'>
-                  <Info className='w-3.5 h-3.5 text-slate-400' />
+                  <Info className='w-3.5 h-3.5 text-muted-foreground/80' />
                 </div>
               </div>
               <div className='flex flex-col'>
-                <span className='text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate mb-2'>
+                <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Avg Flux
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
@@ -2079,7 +2169,7 @@ export function ROConfigView() {
                 </div>
               </div>
               <div className='flex flex-col'>
-                <span className='text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate mb-2'>
+                <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Concentrate Flow
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
@@ -2097,11 +2187,11 @@ export function ROConfigView() {
             <div className='p-4 rounded-2xl border border-border/50 bg-slate-50/30 group hover:border-primary/20 transition-all'>
               <div className='flex items-center justify-between mb-3'>
                 <div className='w-7 h-7 rounded-lg bg-white border border-border/50 flex items-center justify-center shadow-sm'>
-                  <Settings2 className='w-3.5 h-3.5 text-slate-400' />
+                  <Settings2 className='w-3.5 h-3.5 text-muted-foreground/80' />
                 </div>
               </div>
               <div className='flex flex-col'>
-                <span className='text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate mb-2'>
+                <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Feed Pressure
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-background overflow-hidden focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm'>
@@ -2124,15 +2214,15 @@ export function ROConfigView() {
             <div className='p-4 rounded-2xl border border-border/50 bg-slate-50/30 group hover:border-primary/20 transition-all'>
               <div className='flex items-center justify-between mb-3'>
                 <div className='w-7 h-7 rounded-lg bg-white border border-border/50 flex items-center justify-center shadow-sm'>
-                  <Beaker className='w-3.5 h-3.5 text-slate-400' />
+                  <Beaker className='w-3.5 h-3.5 text-muted-foreground/80' />
                 </div>
               </div>
               <div className='flex flex-col'>
-                <span className='text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate mb-2'>
+                <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Feed TDS
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
-                  <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-slate-700'>
+                  <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-foreground/90'>
                     {Math.round(displayFeedTDS).toLocaleString('en-US')}
                   </div>
                   <div className='px-2.5 h-full flex items-center bg-muted/30 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
@@ -2146,15 +2236,15 @@ export function ROConfigView() {
             <div className='p-4 rounded-2xl border border-border/50 bg-slate-50/30 group hover:border-primary/20 transition-all'>
               <div className='flex items-center justify-between mb-3'>
                 <div className='w-7 h-7 rounded-lg bg-white border border-border/50 flex items-center justify-center shadow-sm'>
-                  <Info className='w-3.5 h-3.5 text-slate-400' />
+                  <Info className='w-3.5 h-3.5 text-muted-foreground/80' />
                 </div>
               </div>
               <div className='flex flex-col'>
-                <span className='text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate mb-2'>
+                <span className='text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider truncate mb-2'>
                   Lowest NDP
                 </span>
                 <div className='flex items-center h-9 border border-border rounded bg-muted/20 overflow-hidden shadow-sm'>
-                  <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-slate-700'>
+                  <div className='h-full flex-1 px-3 flex items-center text-sm font-mono font-bold text-foreground/90'>
                     {liveLowestNDP !== null ? liveLowestNDP.toFixed(2) : '—'}
                   </div>
                   <div className='px-2.5 h-full flex items-center bg-muted/30 border-l border-border text-[9px] font-black text-muted-foreground font-mono shrink-0'>
@@ -2178,7 +2268,7 @@ export function ROConfigView() {
               <h3 className='text-[11px] uppercase tracking-[0.25em] text-muted-foreground font-bold leading-tight'>
                 Hydraulic Configuration
               </h3>
-              <div className='text-sm font-bold text-slate-800'>
+              <div className='text-sm font-bold text-foreground/80'>
                 System Stages & Elements Details
               </div>
             </div>
@@ -2196,20 +2286,73 @@ export function ROConfigView() {
         <div className='overflow-x-auto scrollbar-premium'>
           <table className='w-full text-left border-collapse'>
             <thead>
-              <tr className='bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500 font-bold border-b border-border'>
-                <th className='px-6 py-5 w-20 text-center border-r border-border/50'>
-                  STAGE
+              <tr className='bg-slate-50/80 text-[10px] uppercase tracking-wider text-muted-foreground font-bold border-b border-border'>
+                <th className='px-6 py-4 w-20 text-center border-r border-border/50'>
+                  No
                 </th>
-                <th className='px-6 py-5'>VESSELS</th>
-                <th className='px-6 py-5'>ELS/PV</th>
-                <th className='px-6 py-5 border-r border-border/50'>TOTAL</th>
-                <th className='px-6 py-5 min-w-[480px]'>
-                  MEMBRANE ELEMENT SELECTION
+                <th className='px-6 py-4'>
+                  <div className='flex flex-col gap-0.5'>
+                    <span>Press Vessels</span>
+                    <span className='text-[9px] font-normal lowercase'>(1 - 100000)</span>
+                  </div>
                 </th>
-                <th className='px-6 py-5'>FLOW FACTOR</th>
-                <th className='px-6 py-5'>ΔP PIPI</th>
-                <th className='px-6 py-5'>BACK PRESS</th>
-                <th className='px-6 py-5 pr-8'>RECYCLE</th>
+                <th className='px-6 py-4'>
+                  <div className='flex flex-col gap-0.5'>
+                    <div className='flex items-center gap-1'>
+                      <span>No of Els</span>
+                      <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
+                    </div>
+                    <span className='text-[9px] font-normal lowercase'>(1 - 8)</span>
+                  </div>
+                </th>
+                <th className='px-6 py-4 border-r border-border/50'>
+                   <div className='flex flex-col gap-0.5'>
+                    <div className='flex items-center gap-1'>
+                      <span>Total</span>
+                      <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
+                    </div>
+                    <span className='invisible text-[9px]'>-</span>
+                  </div>
+                </th>
+                <th className='px-6 py-4 min-w-[480px]'>
+                   <div className='flex flex-col gap-0.5'>
+                    <div className='flex items-center gap-1'>
+                      <span>Element</span>
+                      <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
+                    </div>
+                    <span className='invisible text-[9px]'>-</span>
+                  </div>
+                </th>
+                <th className='px-6 py-4'>
+                  <div className='flex flex-col gap-0.5'>
+                    <div className='flex items-center gap-1'>
+                      <span>Flow Factor</span>
+                      <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
+                    </div>
+                    <span className='text-[9px] font-normal lowercase'>(0.1 - 1)</span>
+                  </div>
+                </th>
+                <th className='px-6 py-4'>
+                  <div className='flex flex-col gap-0.5'>
+                    <div className='flex items-center gap-1'>
+                      <span>Piping ΔP</span>
+                      <Info className='w-2.5 h-2.5 text-muted-foreground/50' />
+                    </div>
+                    <span className='text-[9px] font-normal lowercase'>(0 - 10)</span>
+                  </div>
+                </th>
+                <th className='px-6 py-4'>
+                  <div className='flex flex-col gap-0.5'>
+                    <span>Back Press</span>
+                    <span className='text-[9px] font-normal lowercase'>(0 - 20)</span>
+                  </div>
+                </th>
+                <th className='px-6 py-4 pr-8'>
+                  <div className='flex flex-col gap-0.5'>
+                    <span>Conc to Feed</span>
+                    <span className='text-[9px] font-normal lowercase'>(0 - 95)</span>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className='divide-y divide-border'>
@@ -2217,7 +2360,7 @@ export function ROConfigView() {
                 <Fragment key={stg.id}>
                   <tr className='group hover:bg-slate-50 transition-colors'>
                     <td className='px-6 py-5 text-center border-r border-border/50'>
-                      <div className='w-9 h-9 rounded bg-slate-100 border border-border flex items-center justify-center text-xs font-black text-slate-700 group-hover:bg-primary/10 group-hover:text-primary transition-all mx-auto shadow-sm'>
+                      <div className='w-9 h-9 rounded bg-slate-100 border border-border flex items-center justify-center text-xs font-black text-foreground/90 group-hover:bg-primary/10 group-hover:text-primary transition-all mx-auto shadow-sm'>
                         {idx + 1}
                       </div>
                     </td>
@@ -2308,14 +2451,14 @@ export function ROConfigView() {
                           />
                           <label
                             htmlFor={`single-${idx}`}
-                            className='text-[10px] font-black text-slate-500 uppercase cursor-pointer'
+                            className='text-[10px] font-black text-muted-foreground uppercase cursor-pointer'
                           >
                             Single
                           </label>
                         </div>
                         <MembraneSelector
                           disabled={!!stg.isd}
-                          value={stg.membraneModel || 'SW30HRLE-400i'}
+                          value={stg.membraneModel || ''}
                           onValueChange={(val) =>
                             setPassData({
                               ...passData,
@@ -2355,7 +2498,7 @@ export function ROConfigView() {
                             htmlFor={`isd-${idx}`}
                             className={cn(
                               'text-[10px] font-black uppercase cursor-pointer',
-                              stg.isd ? 'text-primary' : 'text-slate-400',
+                              stg.isd ? 'text-primary' : 'text-muted-foreground/80',
                             )}
                           >
                             ISD
@@ -2432,20 +2575,25 @@ export function ROConfigView() {
                     </td>
                   </tr>
                   {stg.isd && (
-                    <tr className='bg-muted/10 border-t-0'>
-                      <td colSpan={10} className='px-6 pb-6 pt-2'>
-                        <div className='flex flex-wrap gap-4'>
+                    <tr className='bg-slate-50/30 border-t-0'>
+                      <td colSpan={9} className='px-6 pb-6 pt-2'>
+                        <div className='flex items-center justify-between gap-4 py-2 px-4 bg-slate-50/50 rounded-xl border border-slate-200/60 shadow-inner'>
                           {[...Array(stg.elements)].map((_, i) => {
                             const val = stg.isdElements?.[i] || '';
                             return (
                               <div
                                 key={i}
-                                className='flex flex-col gap-1.5 w-[140px]'
+                                className='flex flex-col gap-1.5 min-w-0'
+                                style={{ flex: '1 1 0' }}
                               >
-                                <label className='text-[10px] font-bold text-slate-500'>
-                                  Element {i + 1}
-                                </label>
+                                <div className='flex items-center justify-between'>
+                                  <label className='text-[9px] font-black text-slate-400 uppercase tracking-tighter'>
+                                    Pos {i + 1}
+                                  </label>
+                                  <div className='w-1.5 h-1.5 rounded-full bg-primary/20' />
+                                </div>
                                 <MembraneSelector
+                                  className='w-full text-[10px] h-9'
                                   value={val}
                                   onValueChange={(newVal) => {
                                     const newElements = [

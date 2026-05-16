@@ -378,10 +378,12 @@ export function PdfSystemDiagram({ report, generatedAt, pfdImage }: Props) {
 
       <View style={s.diagramWrapper}>
         {pfdImage ? (
-          <Image 
-            src={pfdImage} 
-            style={{ width: '100%', height: 'auto', minHeight: 180 }} 
-          />
+          <View style={{ alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <Image 
+              src={pfdImage} 
+              style={{ width: '85%', height: 'auto', minHeight: 140 }} 
+            />
+          </View>
         ) : (
           <BlockFlowDiagram
             feedFlowM3h={ov.systemFeedM3h}
@@ -563,7 +565,7 @@ export function PdfSystemDiagram({ report, generatedAt, pfdImage }: Props) {
         >
           This is a detailed process flow diagram for reference. For full
           P&amp;ID-grade process flow diagrams with instrumentation loops,
-          control valves, and detailed piping, refer to the SOL9X web
+          control valves, and detailed piping, refer to the Transfilm web
           application interactive PFD. Instrumentation tags shown are for
           identification only (P-101: HP Pump, PI-101: Pressure Indicator,
           COND-201: Conductivity Analyzer).

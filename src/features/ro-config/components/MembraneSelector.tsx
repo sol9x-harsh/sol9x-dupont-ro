@@ -95,7 +95,7 @@ export function MembraneSelector({
             className,
           )}
         >
-          <span className='truncate'>{value || 'Select membrane…'}</span>
+          <span className={cn('truncate', !value && 'text-muted-foreground/60')}>{value || 'Select Element'}</span>
           <ChevronsUpDown className='ml-1 h-3 w-3 shrink-0 text-muted-foreground' />
         </Button>
       </PopoverTrigger>

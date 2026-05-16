@@ -5,7 +5,7 @@ import User from '@/lib/models/User';
 import Project from '@/lib/models/Project';
 import WaterLibrary from '@/lib/models/WaterLibrary';
 
-const DEMO_EMAIL = 'demo@sol9x.com';
+const DEMO_EMAIL = 'demo@transfilm.com';
 const DEMO_PASSWORD = 'demo1234';
 const DEMO_NAME = 'Demo Engineer';
 
@@ -71,7 +71,7 @@ export async function GET() {
       folder: 'Demo Projects',
       hot: true,
       name: 'Chennai SWRO Plant — Demo',
-      client: 'SOL9X Demo Client',
+      client: 'Transfilm Demo Client',
       location: 'Chennai, Tamil Nadu, India',
       description: 'Seawater RO desalination — 250 m³/h feed — SW30HRLE-400i',
       status: 'active',

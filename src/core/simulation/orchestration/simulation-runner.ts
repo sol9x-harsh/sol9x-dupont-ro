@@ -97,13 +97,30 @@ function buildStagePressureDrops(
 
 function buildStageRecycleFractions(
   passes: ReturnType<typeof useROConfigStore.getState>['passes'],
+  globalRecycle: ReturnType<typeof useROConfigStore.getState>['concentrateRecycle'],
+  feedFlowM3h: number
 ): number[] {
   const fractions: number[] = [];
   for (const pass of passes) {
-    for (const stage of pass.stages) {
+    const passRecycle = globalRecycle[pass.id];
+    for (let i = 0; i < pass.stages.length; i++) {
+      const stage = pass.stages[i];
       if (stage.vessels.length === 0) continue;
-      // Convert percentage to fraction
-      fractions.push((stage.recyclePercent ?? 0) / 100);
+      
+      // Base recycle from stage-specific setting
+      let frac = (stage.recyclePercent ?? 0) / 100;
+      
+      // Override with Flow Calculator recycle for the last stage of the pass
+      if (i === pass.stages.length - 1 && passRecycle?.enabled) {
+        if (passRecycle.mode === 'Percent') {
+          frac = Math.max(frac, passRecycle.value / 100);
+        } else if (passRecycle.mode === 'Flow' && feedFlowM3h > 0) {
+          // If flow mode, we estimate the fraction based on total feed to this pass.
+          // This is a simplification but aligns with how most calculators handle it.
+          frac = Math.max(frac, Math.min(passRecycle.value / feedFlowM3h, 0.95));
+        }
+      }
+      fractions.push(frac);
     }
   }
   return fractions;
@@ -253,7 +270,11 @@ export function buildSimulationContext(): SimulationContext | null {
       permeatePressureBar,
       stageRecoveryFractions,
       stagePressureDropsBar: stagePressureDrops,
-      stageRecycleFractions: buildStageRecycleFractions(roConfig.passes),
+      stageRecycleFractions: buildStageRecycleFractions(
+        roConfig.passes,
+        roConfig.concentrateRecycle,
+        feedFlowM3h
+      ),
       bypassFlowM3h,
     },
     membrane: {

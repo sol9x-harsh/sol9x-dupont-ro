@@ -56,7 +56,7 @@ export const SEEDED_FEED_CHEMISTRY: FeedChemistry = {
 export const SEEDED_PROJECT: ProjectMetadata = {
   id: 'demo-chennai-swro-001',
   name: 'Chennai SWRO Plant — Demo',
-  client: 'SOL9X Demo Client',
+  client: 'Transfilm Demo Client',
   location: 'Chennai, Tamil Nadu, India',
   description: 'Seawater RO desalination — 250 m³/h feed — SW30HRLE-400i',
   status: 'active',

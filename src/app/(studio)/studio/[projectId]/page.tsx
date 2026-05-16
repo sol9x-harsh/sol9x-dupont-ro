@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 import { StudioShell, type Screen } from '@/components/layout/studio/StudioShell';
 import { SystemDesignView }   from '@/features/system-design/SystemDesignView';
 import { FeedSetupView }      from '@/features/feed-setup/FeedSetupView';
@@ -26,6 +27,15 @@ export default function StudioPage({ params }: Props) {
 
   const [activeScreen, setActiveScreen] = useState<Screen>('design');
   const [units, setUnits]               = useState<'SI' | 'US'>('SI');
+
+  const { data: session, status: sessionStatus } = useSession();
+
+  // Instant fallback for unauthenticated users
+  useEffect(() => {
+    if (sessionStatus === 'unauthenticated') {
+      router.replace('/login');
+    }
+  }, [sessionStatus, router]);
 
   const { setCurrentProject, currentProject } = useProjectStore();
   const { hydrateFeed }     = useFeedStore();
@@ -57,6 +67,11 @@ export default function StudioPage({ params }: Props) {
 
   // 3. Enable Autosave Persistence
   const { status, savedAt, save } = useProjectPersistence(projectId);
+
+  // Prevent "sneak peek" render while session is checking or unauthenticated
+  if (sessionStatus === 'loading' || sessionStatus === 'unauthenticated') {
+    return null;
+  }
 
   // Handle errors
   if (isError) {

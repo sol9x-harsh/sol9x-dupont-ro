@@ -318,7 +318,7 @@ export function ROLoader() {
           className="font-mono text-[10px] tracking-[0.36em] text-muted-foreground uppercase"
           style={{ fontFamily: "'JetBrains Mono', monospace" }}
         >
-          SOL9X
+          TRANSFILM
         </span>
         <span
           className="text-[11px] text-muted-foreground/50 tracking-[0.18em] uppercase"

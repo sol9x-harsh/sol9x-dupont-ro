@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { Badge } from '@/components/ui/badge';
@@ -51,7 +51,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { ChevronRight, Trash2, Edit2, ExternalLink } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { ProjectsGridSkeleton, FolderSkeleton } from '@/features/dashboard/components/ProjectSkeleton';
+import { SignoutModal } from '@/components/shared/modals/SignoutModal';
 
 interface DashboardProject {
   id: string;
@@ -74,9 +76,21 @@ interface DashboardFolder {
 export default function ProjectsView() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+
+  // Instant fallback for unauthenticated users
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/login');
+    }
+  }, [status, router]);
+
+
+
   const [openCreate, setOpenCreate] = useState(false);
+
   const [openFolder, setOpenFolder] = useState(false);
+  const [showSignout, setShowSignout] = useState(false);
   const [folderName, setFolderName] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [search, setSearch] = useState('');
@@ -100,22 +114,26 @@ export default function ProjectsView() {
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
 
   // Queries
-  const { data: projectsData, isLoading: loadingProjects } = useQuery({
+  const { data: projectsData, isLoading: loadingProjects, isPlaceholderData: isProjectsPlaceholder } = useQuery({
     queryKey: ['projects'],
     queryFn: async () => {
       const res = await fetch('/api/projects');
       if (!res.ok) throw new Error('Failed to fetch projects');
       return res.json();
     },
+    staleTime: 30000,
+    placeholderData: keepPreviousData,
   });
 
-  const { data: foldersData } = useQuery({
+  const { data: foldersData, isLoading: loadingFolders } = useQuery({
     queryKey: ['folders'],
     queryFn: async () => {
       const res = await fetch('/api/folders');
       if (!res.ok) throw new Error('Failed to fetch folders');
       return res.json();
     },
+    staleTime: 60000,
+    placeholderData: keepPreviousData,
   });
 
   const projects = projectsData?.projects ?? [];
@@ -128,12 +146,28 @@ export default function ProjectsView() {
       if (!res.ok) throw new Error('Failed to delete project');
       return res.json();
     },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['projects'] });
+      const previousProjects = queryClient.getQueryData(['projects']);
+      queryClient.setQueryData(['projects'], (old: any) => ({
+        ...old,
+        projects: old.projects.filter((p: any) => p.id !== id),
+      }));
+      return { previousProjects };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
       toast.success('Project deleted successfully');
       setDeletingId(null);
     },
-    onError: () => toast.error('Failed to delete project'),
+    onError: (err, id, context) => {
+      if (context?.previousProjects) {
+        queryClient.setQueryData(['projects'], context.previousProjects);
+      }
+      toast.error('Failed to delete project');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
   });
 
   const createFolderMutation = useMutation({
@@ -150,43 +184,65 @@ export default function ProjectsView() {
       if (!res.ok) throw new Error('Failed to save folder');
       return res.json();
     },
+    onMutate: async (newFolder) => {
+      await queryClient.cancelQueries({ queryKey: ['folders'] });
+      const previousFolders = queryClient.getQueryData(['folders']);
+      if (!isEditingFolder) {
+        queryClient.setQueryData(['folders'], (old: any) => ({
+          ...old,
+          folders: [...(old?.folders ?? []), { ...newFolder, id: 'temp-' + Date.now() }],
+        }));
+      }
+      return { previousFolders };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['folders'] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
       toast.success(isEditingFolder ? 'Folder updated' : 'Folder created');
       setOpenFolder(false);
       resetFolderState();
     },
-    onError: (err: any) => toast.error(err.message || 'Failed to save folder'),
+    onError: (err: any, variables, context) => {
+      if (context?.previousFolders) {
+        queryClient.setQueryData(['folders'], context.previousFolders);
+      }
+      toast.error(err.message || 'Failed to save folder');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
   });
 
   const deleteFolderMutation = useMutation({
     mutationFn: async (folder: DashboardFolder) => {
-      if (folder.id === 'virtual') {
-        // Special case: clear references by name since it's not in DB
-        // We'll need a separate API or just do it via project updates
-        // For now, let's assume we want to clear references
-        // In a real app, we'd probably have a "Clear Folder References" API
-        // For now, let's just clear the references in projects
-        // We can't easily do bulk update via client-side fetch without a specific route
-        // So we'll just show a message or handle it if the route supports it
-        // Actually, let's just ignore virtual delete for now or implement it as a project bulk update
-        return { virtual: true, name: folder.name };
-      }
-      const res = await fetch(`/api/folders/${folder.id}`, {
-        method: 'DELETE',
-      });
+      if (folder.id === 'virtual') return { virtual: true, name: folder.name };
+      const res = await fetch(`/api/folders/${folder.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete folder');
       return res.json();
     },
+    onMutate: async (folder) => {
+      await queryClient.cancelQueries({ queryKey: ['folders'] });
+      const previousFolders = queryClient.getQueryData(['folders']);
+      queryClient.setQueryData(['folders'], (old: any) => ({
+        ...old,
+        folders: old?.folders?.filter((f: any) => f.id !== folder.id) ?? [],
+      }));
+      return { previousFolders };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['folders'] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
       toast.success('Folder removed');
       setFolderToDelete(null);
       if (currentFolder === folderToDelete?.name) setCurrentFolder(null);
     },
-    onError: () => toast.error('Failed to delete folder'),
+    onError: (err, folder, context) => {
+      if (context?.previousFolders) {
+        queryClient.setQueryData(['folders'], context.previousFolders);
+      }
+      toast.error('Failed to delete folder');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
   });
 
   const renameProjectMutation = useMutation({
@@ -199,13 +255,31 @@ export default function ProjectsView() {
       if (!res.ok) throw new Error('Failed to rename project');
       return res.json();
     },
+    onMutate: async ({ id, name }) => {
+      await queryClient.cancelQueries({ queryKey: ['projects'] });
+      const previousProjects = queryClient.getQueryData(['projects']);
+      queryClient.setQueryData(['projects'], (old: any) => ({
+        ...old,
+        projects: old.projects.map((p: any) =>
+          p.id === id ? { ...p, name } : p
+        ),
+      }));
+      return { previousProjects };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
       toast.success('Project renamed');
       setRenamingProject(null);
       setNewName('');
     },
-    onError: () => toast.error('Failed to rename project'),
+    onError: (err, variables, context) => {
+      if (context?.previousProjects) {
+        queryClient.setQueryData(['projects'], context.previousProjects);
+      }
+      toast.error('Failed to rename project');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
   });
 
   const resetFolderState = () => {
@@ -233,17 +307,17 @@ export default function ProjectsView() {
     setOpenFolder(true);
   };
 
-  const allFolderNames = [
+  const allFolderNames = useMemo(() => [
     ...new Set([
       ...folders.map((f: DashboardFolder) => f.name),
       ...projects.map((p: DashboardProject) => p.folder).filter(Boolean),
     ]),
-  ];
+  ], [folders, projects]);
 
   const projectsInFolder = (folderName: string) =>
     projects.filter((p: DashboardProject) => p.folder === folderName).length;
 
-  const filtered = projects.filter((p: DashboardProject) => {
+  const filtered = useMemo(() => projects.filter((p: DashboardProject) => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
     const matchesFolder = currentFolder
       ? p.folder === currentFolder
@@ -251,7 +325,12 @@ export default function ProjectsView() {
         ? p.folder === activeFolder
         : true;
     return matchesSearch && matchesFolder;
-  });
+  }), [projects, search, currentFolder, activeFolder]);
+
+  // Prevent "sneak peek" render while session is checking or unauthenticated
+  if (status === 'loading' || status === 'unauthenticated') {
+    return null;
+  }
 
   return (
     <div
@@ -312,7 +391,7 @@ export default function ProjectsView() {
                 value={folderName}
                 onChange={(e) => setFolderName(e.target.value)}
                 placeholder='e.g. Middle East Projects'
-                className='h-10 text-sm border-border/60 focus-visible:ring-[hsl(215,55%,45%)]/30'
+                className='h-10 text-sm border-border/80 focus-visible:ring-[hsl(215,55%,45%)]/30'
                 autoFocus
               />
             </div>
@@ -329,7 +408,7 @@ export default function ProjectsView() {
                 value={folderDescription}
                 onChange={(e) => setFolderDescription(e.target.value)}
                 placeholder='Brief description of this folder...'
-                className='w-full h-16 min-h-16 rounded-lg border border-border/60 bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(215,55%,45%)]/20 focus-visible:border-[hsl(215,55%,45%)]/40 transition-all placeholder:text-muted-foreground/40'
+                className='w-full h-16 min-h-16 rounded-lg border border-border/80 bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(215,55%,45%)]/20 focus-visible:border-[hsl(215,55%,45%)]/40 transition-all placeholder:text-muted-foreground/75'
               />
             </div>
 
@@ -395,61 +474,63 @@ export default function ProjectsView() {
 
       {/* ── Top Nav ── */}
       <header
-        className='h-[64px] border-b bg-white/80 backdrop-blur-xl sticky top-0 z-20 flex items-center px-6 gap-4'
+        className='h-[64px] border-b bg-white/80 backdrop-blur-xl sticky top-0 z-20'
         style={{ borderColor: 'hsl(215,20%,90%)' }}
       >
-        <div className='flex items-center gap-2.5'>
-          <div
-            className='w-9 h-9 rounded-xl flex items-center justify-center shadow-md'
-            style={{
-              background:
-                'linear-gradient(135deg, hsl(215,55%,30%), hsl(210,50%,42%))',
-              boxShadow: '0 4px 12px hsl(215,55%,30%,0.25)',
-            }}
-          >
-            <span className='font-display font-bold text-white text-[11px]'>
-              S9
-            </span>
-          </div>
-          <div>
-            <div className='font-display font-semibold text-foreground text-[13px] tracking-wide leading-none'>
-              SOL9X
+        <div className='max-w-[1440px] mx-auto px-6 lg:px-8 flex items-center h-full w-full gap-4'>
+          <div className='flex items-center gap-2.5'>
+            <div
+              className='w-9 h-9 rounded-xl flex items-center justify-center shadow-md'
+              style={{
+                background:
+                  'linear-gradient(135deg, hsl(215,55%,30%), hsl(210,50%,42%))',
+                boxShadow: '0 4px 12px hsl(215,55%,30%,0.25)',
+              }}
+            >
+              <span className='font-display font-bold text-white text-[11px]'>
+                TM
+              </span>
             </div>
-            <div className='text-[8px] uppercase tracking-[0.2em] text-muted-foreground font-medium leading-none mt-0.5'>
-              RO Design Studio
+            <div>
+              <div className='font-display font-semibold text-foreground text-[13px] tracking-wide leading-none'>
+                TRANSFILM
+              </div>
+              <div className='text-[8px] uppercase tracking-[0.2em] text-muted-foreground font-medium leading-none mt-0.5'>
+                RO Design Studio
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className='ml-auto flex items-center gap-2.5'>
-          <div
-            className='w-8 h-8 rounded-lg border border-border/60 flex items-center justify-center text-[11px] font-bold text-foreground cursor-pointer hover:ring-2 hover:ring-[hsl(215,55%,35%)]/20 transition-all'
-            style={{
-              background:
-                'linear-gradient(135deg, hsl(215,55%,35%,0.12), hsl(210,50%,42%,0.12))',
-            }}
-            title={session?.user?.email ?? ''}
-          >
-            {(session?.user?.name ?? session?.user?.email ?? 'U')
-              .split(' ')
-              .map((w: string) => w[0])
-              .slice(0, 2)
-              .join('')
-              .toUpperCase()}
+          <div className='ml-auto flex items-center gap-2.5'>
+            <div
+              className='w-8 h-8 rounded-lg border border-border/80 flex items-center justify-center text-[11px] font-bold text-foreground cursor-pointer hover:ring-2 hover:ring-[hsl(215,55%,35%)]/20 transition-all'
+              style={{
+                background:
+                  'linear-gradient(135deg, hsl(215,55%,35%,0.12), hsl(210,50%,42%,0.12))',
+              }}
+              title={session?.user?.email ?? ''}
+            >
+              {(session?.user?.name ?? session?.user?.email ?? 'U')
+                .split(' ')
+                .map((w: string) => w[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase()}
+            </div>
+            <button
+              onClick={() => setShowSignout(true)}
+              className='w-8 h-8 rounded-lg border border-border/80 bg-card flex items-center justify-center text-muted-foreground hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all group'
+              title='Sign out'
+            >
+              <LogOut className='w-3.5 h-3.5 group-hover:scale-110 transition-transform' />
+            </button>
           </div>
-          <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
-            className='w-8 h-8 rounded-lg border border-border/60 bg-card flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all'
-            title='Sign out'
-          >
-            <LogOut className='w-3.5 h-3.5' />
-          </button>
         </div>
       </header>
 
       <div className='max-w-[1440px] mx-auto px-6 lg:px-8 py-8'>
         {/* ── Page Header ── */}
-        <div className='flex items-start justify-between gap-6 mb-5'>
+        <div className='flex items-center justify-between gap-6 mb-5'>
           <div>
             {/* Breadcrumb */}
             <div className='flex items-center gap-2 mb-2 flex-wrap'>
@@ -489,7 +570,7 @@ export default function ProjectsView() {
               {currentFolder && (
                 <button
                   onClick={() => setCurrentFolder(null)}
-                  className='w-8 h-8 rounded-xl border border-border/60 bg-card hover:bg-muted/60 flex items-center justify-center text-muted-foreground hover:text-foreground transition-all shrink-0'
+                  className='w-8 h-8 rounded-xl border border-border/80 bg-card hover:bg-muted/80 flex items-center justify-center text-muted-foreground hover:text-foreground transition-all shrink-0'
                   aria-label='Go back'
                 >
                   <ArrowLeft className='w-4 h-4' />
@@ -527,37 +608,41 @@ export default function ProjectsView() {
 
           <div className='flex items-center gap-2.5 shrink-0'>
             <div className='relative'>
-              <Search className='w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60' />
+              <Search className='w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/80' />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder='Search projects...'
-                className='pl-9 h-9 w-[220px] text-[13px] bg-card border-border/60 rounded-xl'
+                className='pl-9 h-9 w-[220px] text-[13px] bg-card border-border/80 rounded-xl'
               />
             </div>
-            <Button
-              variant='outline'
-              onClick={() => setOpenFolder(true)}
-              className='h-9 gap-2 text-[13px] font-semibold border-border/60 hover:border-[hsl(215,55%,38%)]/50 hover:text-[hsl(215,55%,38%)] transition-all'
-            >
-              <FolderPlus className='w-4 h-4' />
-              New Folder
-            </Button>
-            <Button
-              onClick={() => setOpenCreate(true)}
-              className='h-9 gap-2 text-[13px] font-semibold transition-all hover:opacity-90'
-              style={{
-                background:
-                  'linear-gradient(135deg, hsl(215,55%,30%), hsl(210,50%,42%))',
-                boxShadow: '0 4px 16px -4px hsl(215,55%,30%/0.4)',
-                color: 'white',
-              }}
-            >
-              <Plus className='w-4 h-4' />
-              New Project
-            </Button>
+            {!loadingProjects && (
+              <>
+                <Button
+                  variant='outline'
+                  onClick={() => setOpenFolder(true)}
+                  className='h-9 gap-2 text-[13px] font-semibold border-border/80 hover:border-[hsl(215,55%,38%)]/50 hover:text-[hsl(215,55%,38%)] transition-all'
+                >
+                  <FolderPlus className='w-4 h-4' />
+                  New Folder
+                </Button>
+                <Button
+                  onClick={() => setOpenCreate(true)}
+                  className='h-9 gap-2 text-[13px] font-semibold transition-all hover:opacity-90'
+                  style={{
+                    background:
+                      'linear-gradient(135deg, hsl(215,55%,30%), hsl(210,50%,42%))',
+                    boxShadow: '0 4px 16px -4px hsl(215,55%,30%/0.4)',
+                    color: 'white',
+                  }}
+                >
+                  <Plus className='w-4 h-4' />
+                  New Project
+                </Button>
+              </>
+            )}
             <div className='w-px h-5 bg-border/60' />
-            <div className='flex items-center gap-0.5 bg-muted/60 rounded-lg p-0.5 border border-border/40'>
+            <div className='flex items-center gap-0.5 bg-muted/80 rounded-lg p-0.5 border border-border/40'>
               {(
                 [
                   ['grid', LayoutGrid],
@@ -614,15 +699,22 @@ export default function ProjectsView() {
         {!currentFolder && (
           <div className='mb-8'>
             <div className='flex items-center gap-2 mb-3'>
-              <Folder className='w-3.5 h-3.5 text-muted-foreground/60' />
+              <Folder className='w-3.5 h-3.5 text-muted-foreground/80' />
               <span className='text-[11px] uppercase tracking-[0.15em] font-bold text-muted-foreground'>
                 Folders
               </span>
-              <span className='ml-1 text-[10px] font-mono bg-muted/60 text-muted-foreground px-1.5 py-0.5 rounded border border-border/50'>
+              <span className='ml-1 text-[10px] font-mono bg-muted/80 text-muted-foreground px-1.5 py-0.5 rounded border border-border/50'>
                 {allFolderNames.length}
               </span>
             </div>
             <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3'>
+              {loadingFolders && !foldersData && (
+                <>
+                  <FolderSkeleton />
+                  <FolderSkeleton />
+                  <FolderSkeleton />
+                </>
+              )}
               {allFolderNames.map((fn) => {
                 const count = projectsInFolder(fn);
                 const folderData = folders.find(
@@ -717,23 +809,22 @@ export default function ProjectsView() {
 
         {/* ── Projects Section Heading ── */}
         <div className='flex items-center gap-2 mb-4'>
-          <Droplets className='w-3.5 h-3.5 text-muted-foreground/60' />
+          <Droplets className='w-3.5 h-3.5 text-muted-foreground/80' />
           <span className='text-[11px] uppercase tracking-[0.15em] font-bold text-muted-foreground'>
             {currentFolder ?? 'All Projects'}
           </span>
           {!loadingProjects && (
-            <span className='ml-1 text-[10px] font-mono bg-muted/60 text-muted-foreground px-1.5 py-0.5 rounded border border-border/50'>
+            <span className='ml-1 text-[10px] font-mono bg-muted/80 text-muted-foreground px-1.5 py-0.5 rounded border border-border/50'>
               {filtered.length}
             </span>
           )}
         </div>
 
         {/* ── Project Grid ── */}
-        {loadingProjects && (
-          <div className='text-center py-12 text-muted-foreground text-sm font-mono'>
-            Loading projects…
-          </div>
+        {loadingProjects && !projectsData && (
+          <ProjectsGridSkeleton viewMode={viewMode} />
         )}
+
         <div
           className={
             viewMode === 'grid'
@@ -742,36 +833,38 @@ export default function ProjectsView() {
           }
         >
           {/* New project card */}
-          <button
-            onClick={() => setOpenCreate(true)}
-            className={`group relative rounded-2xl border-2 border-dashed border-[hsl(215,55%,38%)]/40 hover:border-[hsl(215,55%,38%)] hover:bg-[hsl(215,55%,38%)]/5 hover:scale-[1.01] hover:shadow-lg hover:shadow-[hsl(215,55%,38%)]/5 transition-all duration-300 text-center ${
-              viewMode === 'grid'
-                ? 'flex flex-col items-center justify-center p-6 min-h-[140px]'
-                : 'flex items-center gap-4 px-5 py-4'
-            }`}
-          >
-            <div
-              className={`rounded-2xl text-[hsl(215,55%,38%)] flex items-center justify-center group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-[hsl(215,55%,38%)]/10 transition-all duration-300 ${
-                viewMode === 'grid' ? 'w-12 h-12 mb-3' : 'w-9 h-9 shrink-0'
+          {!loadingProjects && (
+            <button
+              onClick={() => setOpenCreate(true)}
+              className={`group relative rounded-2xl border-2 border-dashed border-[hsl(215,55%,38%)]/40 hover:border-[hsl(215,55%,38%)] hover:bg-[hsl(215,55%,38%)]/5 hover:scale-[1.01] hover:shadow-lg hover:shadow-[hsl(215,55%,38%)]/5 transition-all duration-300 text-center ${
+                viewMode === 'grid'
+                  ? 'flex flex-col items-center justify-center p-6 min-h-[140px]'
+                  : 'flex items-center gap-4 px-5 py-4'
               }`}
-              style={{
-                background:
-                  'linear-gradient(135deg, hsl(215,50%,94%), hsl(210,45%,92%))',
-              }}
             >
-              <Plus className='w-5 h-5' />
-            </div>
-            <div>
-              <div className='font-display font-semibold text-foreground text-[14px]'>
-                New Project
+              <div
+                className={`rounded-2xl text-[hsl(215,55%,38%)] flex items-center justify-center group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-[hsl(215,55%,38%)]/10 transition-all duration-300 ${
+                  viewMode === 'grid' ? 'w-12 h-12 mb-3' : 'w-9 h-9 shrink-0'
+                }`}
+                style={{
+                  background:
+                    'linear-gradient(135deg, hsl(215,50%,94%), hsl(210,45%,92%))',
+                }}
+              >
+                <Plus className='w-5 h-5' />
               </div>
-              {viewMode === 'grid' && (
-                <div className='text-[12px] text-muted-foreground mt-0.5'>
-                  Start a fresh RO design
+              <div>
+                <div className='font-display font-semibold text-foreground text-[14px]'>
+                  New Project
                 </div>
-              )}
-            </div>
-          </button>
+                {viewMode === 'grid' && (
+                  <div className='text-[12px] text-muted-foreground mt-0.5'>
+                    Start a fresh RO design
+                  </div>
+                )}
+              </div>
+            </button>
+          )}
 
           {filtered.map((p: DashboardProject) => {
             const sc = STATUS[p.status as keyof typeof STATUS];
@@ -782,7 +875,7 @@ export default function ProjectsView() {
                 <div
                   key={p.name}
                   onClick={() => router.push(`/studio/${p.id}`)}
-                  className='group bg-card rounded-xl border border-border/60 hover:border-[hsl(215,55%,38%)]/30 hover:shadow-md transition-all duration-200 cursor-pointer px-5 py-3.5 flex items-center gap-4'
+                  className='group bg-card rounded-xl border border-border/80 hover:border-[hsl(215,55%,38%)]/30 hover:shadow-md transition-all duration-200 cursor-pointer px-5 py-3.5 flex items-center gap-4'
                 >
                   <div
                     className='w-9 h-9 rounded-xl text-[hsl(215,55%,38%)] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform'
@@ -873,7 +966,7 @@ export default function ProjectsView() {
               <div
                 key={p.name}
                 onClick={() => router.push(`/studio/${p.id}`)}
-                className='group relative bg-card rounded-2xl border border-border/60 hover:border-[hsl(215,55%,38%)]/30 hover:shadow-lg hover:shadow-[hsl(215,55%,38%)]/5 transition-all duration-300 cursor-pointer overflow-hidden'
+                className='group relative bg-card rounded-2xl border border-border/80 hover:border-[hsl(215,55%,38%)]/30 hover:shadow-lg hover:shadow-[hsl(215,55%,38%)]/5 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col'
               >
                 <div
                   className='absolute inset-x-0 top-0 h-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300'
@@ -882,7 +975,7 @@ export default function ProjectsView() {
                       'linear-gradient(90deg, hsl(215,55%,35%), hsl(210,50%,45%))',
                   }}
                 />
-                <div className='p-5'>
+                <div className='p-5 flex-1'>
                   <div className='flex items-start justify-between mb-4'>
                     <div
                       className='w-10 h-10 rounded-xl text-[hsl(215,55%,38%)] flex items-center justify-center group-hover:scale-105 transition-transform duration-200'
@@ -980,8 +1073,8 @@ export default function ProjectsView() {
         {/* Empty state */}
         {filtered.length === 0 && (
           <div className='text-center py-20'>
-            <div className='w-14 h-14 rounded-2xl bg-muted/60 flex items-center justify-center mx-auto mb-4'>
-              <Search className='w-6 h-6 text-muted-foreground/40' />
+            <div className='w-14 h-14 rounded-2xl bg-muted/80 flex items-center justify-center mx-auto mb-4'>
+              <Search className='w-6 h-6 text-muted-foreground/75' />
             </div>
             <div className='font-display font-semibold text-foreground text-lg'>
               No projects found
@@ -1099,15 +1192,21 @@ export default function ProjectsView() {
           </AlertDialogFooter>
         </DialogContent>
       </Dialog>
+      <SignoutModal 
+        open={showSignout} 
+        onOpenChange={setShowSignout} 
+        context="active engineering workspace"
+      />
     </div>
   );
 }
+
 
 /* ── Tiny helper ── */
 function ChevronRightIcon() {
   return (
     <svg
-      className='w-3 h-3 text-muted-foreground/40'
+      className='w-3 h-3 text-muted-foreground/75'
       fill='none'
       viewBox='0 0 24 24'
       stroke='currentColor'

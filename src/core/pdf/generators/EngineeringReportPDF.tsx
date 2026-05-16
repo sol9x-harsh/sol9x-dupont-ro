@@ -35,11 +35,11 @@ export function EngineeringReportPDF({
   return (
     <Document
       title={`RO Engineering Report — ${report.metadata.projectName}`}
-      author={report.metadata.preparedBy || 'SOL9X Engineering Services'}
+      author={report.metadata.preparedBy || 'Transfilm Engineering Services'}
       subject="Reverse Osmosis System Engineering Design Report"
-      keywords="RO, reverse osmosis, membrane, engineering, SOL9X"
-      creator="SOL9X RO Design Studio v2026.05"
-      producer="SOL9X — @react-pdf/renderer"
+      keywords="RO, reverse osmosis, membrane, engineering, Transfilm"
+      creator="Transfilm RO Design Studio v2026.05"
+      producer="Transfilm — @react-pdf/renderer"
     >
       {/* Cover page — always included */}
       <PdfCoverPage report={report} />

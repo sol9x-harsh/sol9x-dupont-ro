@@ -61,7 +61,7 @@ export async function generateEngineeringPDF(
 
     const outputFilename =
       filename ??
-      `SOL9X_RO_Report_${safeProjectName}_${dateStamp}.pdf`;
+      `Transfilm_RO_Report_${safeProjectName}_${dateStamp}.pdf`;
 
     // Trigger browser download
     const url = URL.createObjectURL(blob);
